@@ -1,0 +1,515 @@
+﻿using Colorful;
+using MPLS;
+using Routing;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using Console = Colorful.Console;
+
+using static TSST_router.StaticMethods; // Enables straight-forward use of methods in another class (StaticMethods class)
+
+// TODO secure this program from multiple connections - by default
+// each asynchronous callback for receiver will try to empty queues.
+// Since this would not be intended, there is a need to implement
+// a security measure that limits open connections to one.
+
+namespace TSST_router
+{
+    // Klasa reprezentująca stan w ramach obsługi połączenia przychodzącego ("state")
+    class StateObject
+    {
+        public Socket workSocket = null; // Client socket
+        public const int BufferSize = 65536; // Size of receive buffer (64 KiB)
+        public byte[] buffer = new byte[BufferSize]; // Receive buffer
+    }
+
+    class ClientConnectState
+    {
+        public Socket clientSocket = null;
+        public IPEndPoint remoteEP = null;
+    }
+
+    class Interface
+    {
+        public byte InterfaceId { get; }
+        private Queue<MPLSPacket> packetQueue;
+
+        public Interface(byte id)
+        {
+            InterfaceId = id;
+            packetQueue = new Queue<MPLSPacket>();
+        }
+
+        public void EnqueuePacket(MPLSPacket packet)
+        {
+            packetQueue.Enqueue(packet);
+        }
+
+        public MPLSPacket[] GetPacketsAndClear()
+        {
+            MPLSPacket[] returnArray = packetQueue.ToArray();
+            packetQueue.Clear();
+            return returnArray;
+        }
+    }
+
+    // Model routera MPLS łączący się z tzw. chmurą kablową przez dwa sockety (uplink i downlink)
+    class Router
+    {
+
+        // Config information
+        public string id;
+        public int rxPort; // Receiver socket port number
+        public int txPort; // "Remote" host socket port number
+        public int mgmtLocalPort;
+        public int mgmtRemotePort;
+        public int sendIntervalMillis; // Interval between packet shipments, in milliseconds [ms]
+
+        private List<RouteEntry> routingTable; // The routing table is an array of route entries, defined in external library Routing.dll
+
+        private ManualResetEvent allDone = new ManualResetEvent(false); // Thread pauser for receiver
+        private ManualResetEvent connectDone = new ManualResetEvent(false); // Thread pausers for transmitter
+        private ManualResetEvent sendDone = new ManualResetEvent(false);
+        private ManualResetEvent receiveDone = new ManualResetEvent(false);
+
+        // This will be used to time packet shipment and for logging purposes
+        private Stopwatch time;
+        private long lastTick = 0;
+        
+        private Timer NMSPollTimer; // A thread that sends UDP keep-alive packets to the NMS
+
+        // Interface Array - constant set defined on device creation
+        // Iterable type makes it easier to handle
+        private Interface[] routerInterfaces;
+
+        StyleSheet style;
+        public Router(string routerId, int listenPort, int cloudPort, int mgmtLocal, int mgmtRemote, int intervalMs, string routingTablePath, byte[] interfaceIds)
+        {
+            id = routerId;
+            rxPort = listenPort;
+            txPort = cloudPort;
+            mgmtLocalPort = mgmtLocal;
+            mgmtRemotePort = mgmtRemote;
+            sendIntervalMillis = intervalMs;
+
+            /*
+             * Create a new interface for each received ID, and all of them
+             * as an array in the relevant property.
+             */
+            List<Interface> ifaces = new List<Interface>();
+            foreach (var ifId in interfaceIds)
+            {
+                ifaces.Add(new Interface(ifId));
+            }
+            routerInterfaces = ifaces.ToArray();
+
+            routingTable = ParseRoutingTable(routingTablePath);
+
+            Init();
+        }
+
+        // Constructor - two parameters are required, listening port and remote (wirecloud) port
+        public Router(string routerId, int listenPort, int cloudPort, int mgmtLocal, int mgmtRemote, int intervalMs, byte[] interfaceIds)
+            : this(routerId, listenPort, cloudPort, mgmtLocal, mgmtRemote, intervalMs, "", interfaceIds)
+        {
+        }
+
+        void StartListening()
+        {
+            while (true)
+            {
+                try
+                {
+                    IPHostEntry ipHostInfo = Dns.GetHostEntry("localhost");
+                    IPAddress ipAddress = ipHostInfo.AddressList[0];
+                    IPEndPoint localEndPoint = new IPEndPoint(ipAddress, rxPort);
+                    Socket listener = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+
+                    listener.Bind(localEndPoint);
+                    listener.Listen(100);
+
+                    while (true)
+                    {
+                        allDone.Reset(); // Set the event to nonsignaled state.
+                        listener.BeginAccept(new AsyncCallback(AcceptCallback), listener); // Start an asynchronous socket to listen for connections.
+                        allDone.WaitOne(); // Wait until a connection is made before continuing.
+                    }
+                }
+                catch (SocketException)
+                {
+                    Console.WriteLineStyled(style, Timestamp() + "[RX] Reinitiating listener.");
+                }
+            }
+        }
+
+        void AcceptCallback(IAsyncResult ar)
+        {
+            allDone.Set(); // Signal the main thread to continue.
+            Socket listener = (Socket)ar.AsyncState; // Get the socket that handles the client request.
+            try
+            {
+                Socket handler = listener.EndAccept(ar);
+                StateObject state = new StateObject(); // Create the state object.
+                state.workSocket = handler;
+                handler.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReadCallback), state);
+                Console.WriteLineStyled(style, Timestamp() + "[RX] Connected on {0}", rxPort);
+            }
+            catch (SocketException)
+            {
+                
+            }
+        }
+
+        void ReadCallback(IAsyncResult ar)
+        {
+            // Retrieve the state object and the handler socket  
+            // from the asynchronous state object.  
+            StateObject state = (StateObject)ar.AsyncState;
+            Socket handler = state.workSocket;
+
+            try
+            {
+                // Read data from the client socket.   
+                int bytesRead = handler.EndReceive(ar);
+
+                if (bytesRead > 0) 
+                {
+                    Message receivedMsg = MPLSMethods.MessageFromStream(state.buffer.ToArray()); // Header bytes need to be ignored - Skip(2)
+                    byte interfaceId = state.buffer[0]; // Wirecloud-level header element - the interface identifier
+                    AggregatePacket receivedPacket = MPLSMethods.Deserialize(receivedMsg);
+
+                    Console.WriteLineStyled(style, Timestamp() + "[RX] ==> {0} MPLS Packets.", receivedPacket.packets.Length);
+
+                    foreach (MPLSPacket mplspacket in receivedPacket.packets)
+                        Route(mplspacket, interfaceId);
+                }
+
+                handler.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReadCallback), state);
+            }
+            catch (SocketException)
+            {
+                Console.WriteLineStyled(style, Timestamp() + "[RX] Lost incoming connection.");
+                handler.Shutdown(SocketShutdown.Both);
+                handler.Close();
+            }
+        }
+
+        void StartClient()
+        {
+            while (true)
+            {
+                try
+                {
+                    IPHostEntry ipHostInfo = Dns.GetHostEntry("localhost");
+                    IPAddress ipAddress = ipHostInfo.AddressList[0];
+                    IPEndPoint remoteEP = new IPEndPoint(ipAddress, txPort);
+                    Socket client = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp); // Create a TCP/IP socket.
+                    client.BeginConnect(remoteEP, new AsyncCallback(ConnectCallback), new ClientConnectState() { clientSocket = client, remoteEP = remoteEP }); // Connect to the remote endpoint.
+
+                    connectDone.WaitOne(); // Waits until callback manages to connect
+
+                    while (true)
+                    {
+                        if (time.ElapsedMilliseconds - lastTick > sendIntervalMillis)
+                        {
+                            lastTick = time.ElapsedMilliseconds;
+                            foreach (Interface iface in routerInterfaces)
+                            {
+                                MPLSPacket[] queuedPackets = iface.GetPacketsAndClear(); // Loads all packets stored in a queue and clears that interface's queue
+                                if (queuedPackets.Length > 0)
+                                {
+                                    AggregatePacket outgoingPacket = new AggregatePacket(queuedPackets);
+                                    Message socketMessage = MPLSMethods.Serialize(outgoingPacket);
+                                    byte randomID = (byte)(DateTime.Now.ToBinary() % 255); // Header byte 2: Random byte-sized ID generated based on the current timestamp
+                                    socketMessage.header[0] = iface.InterfaceId;
+                                    socketMessage.header[1] = randomID;
+                                    SendMessage(client, socketMessage);
+                                    sendDone.WaitOne();
+                                    Console.WriteLineStyled(style, Timestamp() + "[TX] <== {0} packets.", queuedPackets.Length);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (SocketException)
+                {
+
+                }
+            }
+        }
+
+        void ConnectCallback(IAsyncResult ar)
+        {
+            ClientConnectState state = (ClientConnectState)ar.AsyncState;
+            Socket client = state.clientSocket; // Retrieve the socket from the state object.
+            IPEndPoint remoteEP = state.remoteEP;
+            try
+            {
+                client.EndConnect(ar); // Complete the connection.
+                connectDone.Set(); // Signal that the connection has been made.
+                Console.WriteLineStyled(style, Timestamp() + "[TX] Connected to {0}", txPort);
+            }
+            catch (SocketException)
+            {
+                client.BeginConnect(remoteEP, new AsyncCallback(ConnectCallback), state); // Connect to the remote endpoint.
+            }
+        }
+
+        void SendMessage(Socket client, Message message)
+        {
+            byte[] byteData = message.HeaderPlusData(); // Extract complete byte string from Message
+            client.BeginSend(byteData, 0, byteData.Length, 0, new AsyncCallback(SendCallback), client); // Begin sending the data to the remote device.
+        }
+
+        void SendCallback(IAsyncResult ar)
+        {
+            try
+            {
+                Socket client = (Socket)ar.AsyncState; // Retrieve the socket from the state object.
+                int bytesSent = client.EndSend(ar); // Complete sending the data to the remote device.
+                //Console.WriteLineStyled(style, Timestamp() + "[TX] <== Sent {0} bytes to server.", bytesSent);
+                sendDone.Set(); // Signal that all bytes have been sent.
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+        }
+        
+        /*
+         * Takes a packet and places it in a corresponding queue for output.
+         */
+        void Route(MPLSPacket packet, byte iface)
+        {
+            RouteEntry routeEntry;
+            int topLabel = packet.labels.Pop();
+            try
+            {
+                var queryResults = from entry in routingTable
+                                   where entry.interface_in == iface && entry.label_in == topLabel
+                                   select entry;
+                // The query should always return a single entry (.Single() throws error if not single ;P)
+                routeEntry = queryResults.Single();
+            }
+            catch (InvalidOperationException)
+            {
+                // If no routing information is found, abandon route method
+                Console.WriteLineStyled(style, Timestamp() + "[ROUTE]\t{{{0}, {1}}} -> X", iface, topLabel);
+                return;
+            }
+
+            if (routeEntry.is_swap_or_add) // If the label is to be swapped or added...
+            {
+                foreach (int label in routeEntry.labels_out)
+                {
+                    packet.labels.Push(label);
+                }
+                /*
+                 * This mysterious construct does the following things:
+                 *  1. Query the interface list in search of the one
+                 *      that has an ID [i.InterfaceId] equal to the one
+                 *      carried in the routing entry [routeEntry.interface_out]
+                 *  2. Ensure that only single interface is received as
+                 *      a result (there should not be multiple interfaces
+                 *      with the same ID) and select it [.Single()]
+                 *  3. Execute a method [.EnqueuePacket()] on that interface
+                 *      to insert the packet in a correspoding output queue
+                 *          
+                 *                                              Sincerely,
+                 *                                                Waked
+                 */
+                try
+                {
+                    var queryResults = from i in routerInterfaces
+                                       where i.InterfaceId == routeEntry.interface_out
+                                       select i;
+                    Interface outputIface = queryResults.Single();
+                    outputIface.EnqueuePacket(packet);
+
+                    Console.WriteLineStyled(style, Timestamp() + "[ROUTE]\t{{{0}, {1}}} -> {{{2}, {3}}})", iface, topLabel, routeEntry.interface_out, string.Join(";", routeEntry.labels_out));
+                }
+                catch (InvalidOperationException)
+                {
+                    // In case there is no such interface to output (the routing
+                    // infromation is flawed), abandon routing.
+                    Console.WriteLineStyled(style, Timestamp() + "[ROUTE]\t{{{0}, {1}}} -> X", iface, topLabel);
+                }
+            }
+            else // ...otherwise, reroute the packet without the top-most label
+            {
+                Route(packet, iface);
+            }
+
+        }
+
+        void PrintRouteTable()
+        {
+            Console.WriteLineStyled(style, Timestamp() + "[ROUTE] Current table:");
+            Console.WriteLine("\t┌───────┬───────┬───────┬───────┬───────┐\n" +
+                              "\t│If_in  │Lbl_in │Method │If_out │Lbl_out│\n" +
+                              "\t├───────┼───────┼───────┼───────┼───────┤");
+            foreach (RouteEntry entry in routingTable)
+            {
+                Console.WriteLine("\t│{0}\t│{1}│{2}│{3}\t│{4}│",
+                    entry.interface_in,
+                    entry.label_in + (entry.label_in > 999999 ? "" : "\t"), // If the label is greater than a million, place no tab
+                    entry.is_swap_or_add ? "Add/Swp" : "Rmv    ",
+                    entry.is_swap_or_add ? entry.interface_out.ToString() : "", // If the method is "Remove", no need to print this
+                    entry.is_swap_or_add ? entry.labels_out[0] + (entry.labels_out[0] > 999999 ? "" : "\t") : ""); // Same as above two
+
+                // If there is a label stack, print additional rows:
+                if (entry.labels_out.Length > 1)
+                    foreach (int label in entry.labels_out.Skip(1))
+                    {
+                        Console.WriteLine("\t│\t│\t│\t│\t│{0}│",
+                            label + (label > 999999 ? "" : "\t")); // Same story as above - if over million, no tab
+                    }
+            }
+            Console.WriteLine("\t└───────┴───────┴───────┴───────┴───────┘");
+        }
+
+        string Timestamp()
+        {
+            return String.Format("{0:00}:{1:00}.{2:000} ", time.Elapsed.Minutes, time.Elapsed.Seconds, time.Elapsed.Milliseconds);
+        }
+        
+        class PollStateObject
+        {
+            public byte[] msg;
+            public Socket sock;
+            public IPEndPoint ep;
+
+        }
+        private void PollNMS(object state)
+        {
+            PollStateObject pso = (PollStateObject)state;
+            pso.sock.SendTo(pso.msg, pso.ep);
+        }
+
+        void StartPolling(int remotePort)
+        {
+            IPAddress ipAddress = IPAddress.Parse("127.0.0.1");
+            IPEndPoint remoteEP = new IPEndPoint(ipAddress, mgmtRemotePort);
+            Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+
+            byte[] msg = Encoding.ASCII.GetBytes(id);
+            int interval = sendIntervalMillis / 2;
+
+            PollStateObject pollStateObject = new PollStateObject() { msg = msg, sock = s, ep = remoteEP };
+
+            NMSPollTimer = new Timer(PollNMS, pollStateObject, 0, interval);
+        }
+
+        void StartManagement()
+        {
+            UdpClient listener = new UdpClient(mgmtLocalPort);
+            IPEndPoint groupEP = new IPEndPoint(IPAddress.Parse("127.0.0.1"), mgmtLocalPort);
+
+            try
+            {
+                while (true)
+                {
+                    byte[] bytes = listener.Receive(ref groupEP);
+
+                    RouteOrder order = RouteInfoMethods.Deserialize(bytes);
+
+                    RouteEntry newEntry = order.entry;
+                    RouteEntry existingEntry = null;
+
+                    Console.WriteLineStyled(style, Timestamp() + "[MGMT] Received mgmt request");
+
+                    try
+                    {
+                        var queryResults = from entry in routingTable
+                                           where entry.interface_in == newEntry.interface_in && entry.label_in == newEntry.label_in
+                                           select entry;
+
+                        existingEntry = queryResults.Single();
+
+                        routingTable.Remove(existingEntry);
+                        Console.WriteLineStyled(style, Timestamp() + "[MGMT] Removed existing entry.");
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+
+                    if (order.add_entry)
+                    {
+                        routingTable.Add(newEntry);
+                        Console.WriteLineStyled(style, Timestamp() + "[MGMT] Added entry.");
+                    }
+                }
+
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+            finally
+            {
+                listener.Close();
+            }
+        }
+
+
+
+        void Init()
+        {
+            style = new StyleSheet(Color.LightGray);
+            style.AddStyle("ROUTE", Color.CornflowerBlue);
+            style.AddStyle("RX",    Color.MediumVioletRed);
+            style.AddStyle("TX",    Color.LawnGreen);
+            style.AddStyle("MGMT",  Color.Orange);
+
+            Console.Title = id;
+            Console.WriteAscii(id, Color.CornflowerBlue);
+
+            Console.WriteLine("Ports: Wirecloud({0}, {1}), NMS({2}, {3})", rxPort, txPort, mgmtLocalPort, mgmtRemotePort);
+            Console.WriteLine("Interfaces: " + 
+                string.Join(", ", routerInterfaces.Select(iface => iface.InterfaceId).ToArray()));
+            Console.WriteLine("======");
+
+            time = new Stopwatch();
+            Thread server = new Thread(StartListening);
+            Thread client = new Thread(StartClient);
+            Thread management = new Thread(StartManagement);
+            try
+            {
+                Console.WriteLine("Starting router... ");
+                server.Start();
+                client.Start();
+                management.Start();
+                time.Start(); // Start the output timer after client begins
+            }
+            catch (Exception e)
+            {
+                Console.WriteLineStyled("failed:", style);
+                Console.WriteLine(e);
+            }
+
+            // Launch
+            StartPolling(58000);
+
+            while (true)
+            {
+                Console.ReadKey();
+#if DEBUG
+                MPLSPacket testPacket = new MPLSPacket(new int[] { 2137 }, "This is a test MPLSMessage.");
+                routerInterfaces[0].EnqueuePacket(testPacket);
+#else
+                PrintRouteTable();
+#endif
+            }
+            server.Join();
+            client.Join();
+            management.Join();
+        }
+    }
+}
