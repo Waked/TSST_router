@@ -1,0 +1,10 @@
+# This is an example routing table
+# Comments like this should be ignored by the interpreter
+# The template is as follows:
+#
+# 	interface_in    label_in    add/swap(bool)  interface_out   label(s)_out
+# 
+# Row elements are tab-separated (\t) and labels (if adding more) are comma-separated.
+44	1337	true	69	6
+44	2137	true	69	2137
+69	2137	true	44	2137

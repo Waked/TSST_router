@@ -72,6 +72,7 @@ namespace TSST_router
         public int mgmtRemotePort;
         public int sendIntervalMillis; // Interval between packet shipments, in milliseconds [ms]
 
+        private string routingTablePath; // Path to existing routing table stored in an .rt file (may be empty)
         private List<RouteEntry> routingTable; // The routing table is an array of route entries, defined in external library Routing.dll
 
         private ManualResetEvent allDone = new ManualResetEvent(false); // Thread pauser for receiver
@@ -88,9 +89,10 @@ namespace TSST_router
         // Interface Array - constant set defined on device creation
         // Iterable type makes it easier to handle
         private Interface[] routerInterfaces;
+        private byte[] routerInterfaceIds;
 
         StyleSheet style;
-        public Router(string routerId, int listenPort, int cloudPort, int mgmtLocal, int mgmtRemote, int intervalMs, string routingTablePath, byte[] interfaceIds)
+        public Router(string routerId, int listenPort, int cloudPort, int mgmtLocal, int mgmtRemote, int intervalMs, string filePath, byte[] interfaceIds)
         {
             id = routerId;
             rxPort = listenPort;
@@ -98,20 +100,9 @@ namespace TSST_router
             mgmtLocalPort = mgmtLocal;
             mgmtRemotePort = mgmtRemote;
             sendIntervalMillis = intervalMs;
-
-            /*
-             * Create a new interface for each received ID, and all of them
-             * as an array in the relevant property.
-             */
-            List<Interface> ifaces = new List<Interface>();
-            foreach (var ifId in interfaceIds)
-            {
-                ifaces.Add(new Interface(ifId));
-            }
-            routerInterfaces = ifaces.ToArray();
-
-            routingTable = ParseRoutingTable(routingTablePath);
-
+            routingTablePath = filePath;
+            routerInterfaceIds = interfaceIds;
+            
             Init();
         }
 
@@ -185,7 +176,7 @@ namespace TSST_router
                     byte interfaceId = state.buffer[0]; // Wirecloud-level header element - the interface identifier
                     AggregatePacket receivedPacket = MPLSMethods.Deserialize(receivedMsg);
 
-                    Console.WriteLineStyled(style, Timestamp() + "[RX] ==> {0} MPLS Packets.", receivedPacket.packets.Length);
+                    Console.WriteLineStyled(style, Timestamp() + "[RX] <== {0} MPLS Packets.", receivedPacket.packets.Length);
 
                     foreach (MPLSPacket mplspacket in receivedPacket.packets)
                         Route(mplspacket, interfaceId);
@@ -232,7 +223,7 @@ namespace TSST_router
                                     socketMessage.header[1] = randomID;
                                     SendMessage(client, socketMessage);
                                     sendDone.WaitOne();
-                                    Console.WriteLineStyled(style, Timestamp() + "[TX] <== {0} packets.", queuedPackets.Length);
+                                    Console.WriteLineStyled(style, Timestamp() + "[TX] ==> {0} packets.", queuedPackets.Length);
                                 }
                             }
                         }
@@ -462,18 +453,45 @@ namespace TSST_router
 
         void Init()
         {
+            // Prepare console styling
             style = new StyleSheet(Color.LightGray);
             style.AddStyle("ROUTE", Color.CornflowerBlue);
             style.AddStyle("RX",    Color.MediumVioletRed);
             style.AddStyle("TX",    Color.LawnGreen);
             style.AddStyle("MGMT",  Color.Orange);
+            style.AddStyle("ERROR", Color.Red);
+
+            /*
+             * Create a new interface for each received ID, and all of them
+             * as an array in the relevant property.
+             */
+            List<Interface> ifaces = new List<Interface>();
+            foreach (var ifId in routerInterfaceIds)
+            {
+                ifaces.Add(new Interface(ifId));
+            }
+            routerInterfaces = ifaces.ToArray();
+
+            /*
+             * Initialize routing table - in case the path is an empty
+             * string or the file does not exist, an empty table will
+             * be created.
+             */
+            try
+            {
+                routingTable = ParseRoutingTable(routingTablePath);
+            }
+            catch (FileNotFoundException) // ParseRoutingTable throws FileNotFoundException if file is not found (duh!)
+            {
+                Console.WriteLineStyled(style, "[ERROR] Failed to load routing table from file (file not found)");
+                routingTable = ParseRoutingTable("");
+            }
 
             Console.Title = id;
             Console.WriteAscii(id, Color.CornflowerBlue);
 
             Console.WriteLine("Ports: Wirecloud({0}, {1}), NMS({2}, {3})", rxPort, txPort, mgmtLocalPort, mgmtRemotePort);
-            Console.WriteLine("Interfaces: " + 
-                string.Join(", ", routerInterfaces.Select(iface => iface.InterfaceId).ToArray()));
+            Console.WriteLine("Interfaces: " + string.Join(", ", routerInterfaceIds));
             Console.WriteLine("======");
 
             time = new Stopwatch();

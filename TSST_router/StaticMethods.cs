@@ -32,23 +32,32 @@ namespace TSST_router
             if (pathToFile == "")
                 return newEntryList;
 
-            string[] tableRows = File.ReadAllLines(pathToFile, Encoding.UTF8);
-            // Iterate over each line in routing config file
-            foreach (string row in tableRows)
+            try
             {
-                if (row[0] == '#') // Check if a row is a comment - if true, skip it
-                    continue;
-                string[] attributes = row.Split('\t');
-                RouteEntry newEntry = new RouteEntry(
-                    byte.Parse(attributes[0]),
-                    int.Parse(attributes[1]),
-                    bool.Parse(attributes[2]),
-                    byte.Parse(attributes[3]),
-                    Array.ConvertAll(attributes[4].Split(','), int.Parse) // Convert labels as CSVs into int[]
-                    );
-                newEntryList.Add(newEntry);
+                string[] tableRows = File.ReadAllLines(pathToFile, Encoding.UTF8);
+
+                // Iterate over each line in routing config file
+                foreach (string row in tableRows)
+                {
+                    if (row[0] == '#') // Check if a row is a comment - if true, skip it
+                        continue;
+                    string[] attributes = row.Split('\t');
+                    RouteEntry newEntry = new RouteEntry(
+                        byte.Parse(attributes[0]),
+                        int.Parse(attributes[1]),
+                        bool.Parse(attributes[2]),
+                        byte.Parse(attributes[3]),
+                        Array.ConvertAll(attributes[4].Split(','), int.Parse) // Convert labels as CSVs into int[]
+                        );
+                    newEntryList.Add(newEntry);
+                }
+                return newEntryList;
             }
-            return newEntryList;
+            catch (FileNotFoundException)
+            {
+                throw new FileNotFoundException();
+            }
+            
         }
 
     }
