@@ -12,6 +12,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using Console = Colorful.Console;
+using MPLSSim_Logger;
 
 using static TSST_router.StaticMethods; // Enables straight-forward use of methods in another class (StaticMethods class)
 
@@ -110,6 +111,93 @@ namespace TSST_router
         public Router(string routerId, int listenPort, int cloudPort, int mgmtLocal, int mgmtRemote, int intervalMs, byte[] interfaceIds)
             : this(routerId, listenPort, cloudPort, mgmtLocal, mgmtRemote, intervalMs, "", interfaceIds)
         {
+        }
+
+        void Init()
+        {
+            // Prepare console styling
+            style = new StyleSheet(Color.LightGray);
+            style.AddStyle("ROUTE", Color.CornflowerBlue);
+            style.AddStyle("RX",    Color.DeepPink);
+            style.AddStyle("TX",    Color.LawnGreen);
+            style.AddStyle("MGMT",  Color.Orange);
+            style.AddStyle("ERROR", Color.Red);
+            style.AddStyle("DROP",  Color.OrangeRed);
+
+            LoggingLib.Connect();
+            LoggingLib.SendMessage(string.Format("This is a message from router (ID: {0})", id));
+
+            /*
+             * Create a new interface for each received ID, and all of them
+             * as an array in the relevant property.
+             */
+            List<Interface> ifaces = new List<Interface>();
+            foreach (var ifId in routerInterfaceIds)
+            {
+                ifaces.Add(new Interface(ifId));
+            }
+            routerInterfaces = ifaces.ToArray();
+
+            /*
+             * Initialize routing table - in case the path is an empty
+             * string or the file does not exist, an empty table will
+             * be created.
+             */
+            try
+            {
+                routingTable = ParseRoutingTable(routingTablePath);
+            }
+            catch (FileNotFoundException) // ParseRoutingTable throws FileNotFoundException if file is not found (duh!)
+            {
+                Console.WriteLineStyled(style, "[ERROR] Failed to load routing table from file (file not found)");
+                routingTable = ParseRoutingTable("");
+            }
+
+            Console.Title = id;
+            Console.WriteAscii(id, Color.CornflowerBlue);
+
+            Console.WriteLine("Ports: Wirecloud({0}, {1}), NMS({2}, {3})", rxPort, txPort, mgmtLocalPort, mgmtRemotePort);
+            Console.WriteLine("Interfaces: " + string.Join(", ", routerInterfaceIds));
+            Console.WriteLine("======");
+
+            time = new Stopwatch();
+            Thread server = new Thread(StartListening);
+            Thread client = new Thread(StartClient);
+            Thread management = new Thread(StartManagement);
+            try
+            {
+                Console.WriteLine("Starting router... ");
+                server.Start();
+                client.Start();
+                management.Start();
+                time.Start(); // Start the output timer after client begins
+            }
+            catch (Exception e)
+            {
+                Console.WriteLineStyled("failed:", style);
+                Console.WriteLine(e);
+            }
+
+            // Launch
+            StartPolling(58000);
+
+            while (true)
+            {
+                Console.ReadKey();
+
+                /*
+                 * Tutaj zdefiniowane jest dzialanie po wcisnieciu dowolnego klawisza podczas dzialania
+                 * programu:
+                 * - tryb DEBUG - wysylanie testowego pakietu o etykiecie 2137 na pierwszy z brzegu interfejs
+                 * - tryb RELEASE - wypisanie tabeli trasowania pakietow
+                 */
+#if DEBUG
+                MPLSPacket testPacket = new MPLSPacket(new int[] { 2137 }, "This is a test MPLSMessage.");
+                routerInterfaces[0].EnqueuePacket(testPacket);
+#else
+                PrintRouteTable();
+#endif
+            }
         }
 
         void StartListening()
@@ -294,6 +382,7 @@ namespace TSST_router
             {
                 // If no routing information is found, abandon route method
                 Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> DROP", iface, topLabel);
+                SendRemoteLog("[ROUTE] ({0}, {1}) ==> DROP", iface, topLabel);
                 return;
             }
 
@@ -324,20 +413,23 @@ namespace TSST_router
                                        select i;
                     Interface outputIface = queryResults.Single();
                     outputIface.EnqueuePacket(packet);
-
+                    
                     Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> ({2}, {3}))", iface, topLabel, routeEntry.interface_out, string.Join(";", routeEntry.labels_out));
+                    SendRemoteLog("[ROUTE] ({0}, {1}) ==> ({2}, {3}))", iface, topLabel, routeEntry.interface_out, string.Join(";", routeEntry.labels_out));
                 }
                 catch (InvalidOperationException)
                 {
                     // In case there is no such interface to output (the routing
                     // infromation is flawed), abandon routing.
                     Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> DROP", iface, topLabel);
+                    SendRemoteLog("[ROUTE] ({0}, {1}) ==> DROP", iface, topLabel);
                 }
             }
             else // ...otherwise, reroute the packet without the top-most label
             {
                 Route(packet, iface);
                 Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> Reroute({0}, {2})", iface, topLabel, packet.labels.Peek());
+                SendRemoteLog("[ROUTE] ({0}, {1}) ==> Reroute({0}, {2})", iface, topLabel, packet.labels.Peek());
             }
 
         }
@@ -371,6 +463,12 @@ namespace TSST_router
         string Timestamp()
         {
             return String.Format("{0:00}:{1:00}.{2:000} ", time.Elapsed.Minutes, time.Elapsed.Seconds, time.Elapsed.Milliseconds);
+        }
+
+        private void SendRemoteLog(string format, params object[] args)
+        {
+            string identifier = string.Format("[{0}]", id);
+            LoggingLib.SendMessage(identifier + string.Format(format, args));
         }
         
         class PollStateObject
@@ -465,81 +563,5 @@ namespace TSST_router
 
 
 
-        void Init()
-        {
-            // Prepare console styling
-            style = new StyleSheet(Color.LightGray);
-            style.AddStyle("ROUTE", Color.CornflowerBlue);
-            style.AddStyle("RX",    Color.DeepPink);
-            style.AddStyle("TX",    Color.LawnGreen);
-            style.AddStyle("MGMT",  Color.Orange);
-            style.AddStyle("ERROR", Color.Red);
-            style.AddStyle("DROP",  Color.OrangeRed);
-
-            /*
-             * Create a new interface for each received ID, and all of them
-             * as an array in the relevant property.
-             */
-            List<Interface> ifaces = new List<Interface>();
-            foreach (var ifId in routerInterfaceIds)
-            {
-                ifaces.Add(new Interface(ifId));
-            }
-            routerInterfaces = ifaces.ToArray();
-
-            /*
-             * Initialize routing table - in case the path is an empty
-             * string or the file does not exist, an empty table will
-             * be created.
-             */
-            try
-            {
-                routingTable = ParseRoutingTable(routingTablePath);
-            }
-            catch (FileNotFoundException) // ParseRoutingTable throws FileNotFoundException if file is not found (duh!)
-            {
-                Console.WriteLineStyled(style, "[ERROR] Failed to load routing table from file (file not found)");
-                routingTable = ParseRoutingTable("");
-            }
-
-            Console.Title = id;
-            Console.WriteAscii(id, Color.CornflowerBlue);
-
-            Console.WriteLine("Ports: Wirecloud({0}, {1}), NMS({2}, {3})", rxPort, txPort, mgmtLocalPort, mgmtRemotePort);
-            Console.WriteLine("Interfaces: " + string.Join(", ", routerInterfaceIds));
-            Console.WriteLine("======");
-
-            time = new Stopwatch();
-            Thread server = new Thread(StartListening);
-            Thread client = new Thread(StartClient);
-            Thread management = new Thread(StartManagement);
-            try
-            {
-                Console.WriteLine("Starting router... ");
-                server.Start();
-                client.Start();
-                management.Start();
-                time.Start(); // Start the output timer after client begins
-            }
-            catch (Exception e)
-            {
-                Console.WriteLineStyled("failed:", style);
-                Console.WriteLine(e);
-            }
-
-            // Launch
-            StartPolling(58000);
-
-            while (true)
-            {
-                Console.ReadKey();
-#if DEBUG
-                MPLSPacket testPacket = new MPLSPacket(new int[] { 2137 }, "This is a test MPLSMessage.");
-                routerInterfaces[0].EnqueuePacket(testPacket);
-#else
-                PrintRouteTable();
-#endif
-            }
-        }
     }
 }
