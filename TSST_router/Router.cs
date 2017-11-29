@@ -172,14 +172,13 @@ namespace TSST_router
 
                 if (bytesRead > 0) 
                 {
-                    Message receivedMsg = MPLSMethods.MessageFromStream(state.buffer.ToArray()); // Header bytes need to be ignored - Skip(2)
-                    byte interfaceId = state.buffer[0]; // Wirecloud-level header element - the interface identifier
+                    BinaryWrapper receivedMsg = new BinaryWrapper(state.buffer.ToArray(), true); // Use a Wrapper constructor that extracts header bytes into fields
                     AggregatePacket receivedPacket = MPLSMethods.Deserialize(receivedMsg);
 
-                    Console.WriteLineStyled(style, Timestamp() + "[RX] <== {0} MPLS Packets.", receivedPacket.packets.Length);
+                    Console.WriteLineStyled(style, Timestamp() + "[RX] <== {0} packets received.", receivedPacket.packets.Length);
 
                     foreach (MPLSPacket mplspacket in receivedPacket.packets)
-                        Route(mplspacket, interfaceId);
+                        Route(mplspacket, receivedMsg.interfaceId);
                 }
 
                 handler.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReadCallback), state);
@@ -206,6 +205,8 @@ namespace TSST_router
 
                     connectDone.WaitOne(); // Waits until callback manages to connect
 
+                    Random rng = new Random(); // Random number generator to fill in second header byte
+
                     while (true)
                     {
                         if (time.ElapsedMilliseconds - lastTick > sendIntervalMillis)
@@ -216,14 +217,15 @@ namespace TSST_router
                                 MPLSPacket[] queuedPackets = iface.GetPacketsAndClear(); // Loads all packets stored in a queue and clears that interface's queue
                                 if (queuedPackets.Length > 0)
                                 {
-                                    AggregatePacket outgoingPacket = new AggregatePacket(queuedPackets);
-                                    Message socketMessage = MPLSMethods.Serialize(outgoingPacket);
-                                    byte randomID = (byte)(DateTime.Now.ToBinary() % 255); // Header byte 2: Random byte-sized ID generated based on the current timestamp
-                                    socketMessage.header[0] = iface.InterfaceId;
-                                    socketMessage.header[1] = randomID;
-                                    SendMessage(client, socketMessage);
+                                    AggregatePacket finalPacket = new AggregatePacket(queuedPackets);
+                                    BinaryWrapper socketMessage = MPLSMethods.Serialize(finalPacket);
+
+                                    socketMessage.interfaceId = iface.InterfaceId; // Header byte 1: interface identifier number
+                                    socketMessage.randomNumber = (byte)(rng.Next() % 255); // Header byte 2: Random byte-sized ID generated based on the current timestamp
+
+                                    SendMessage(client, socketMessage.HeaderPlusData());
                                     sendDone.WaitOne();
-                                    Console.WriteLineStyled(style, Timestamp() + "[TX] ==> {0} packets.", queuedPackets.Length);
+                                    Console.WriteLineStyled(style, Timestamp() + "[TX] ==> {0} packets sent.", queuedPackets.Length);
                                 }
                             }
                         }
@@ -253,9 +255,8 @@ namespace TSST_router
             }
         }
 
-        void SendMessage(Socket client, Message message)
+        void SendMessage(Socket client, byte[] byteData)
         {
-            byte[] byteData = message.HeaderPlusData(); // Extract complete byte string from Message
             client.BeginSend(byteData, 0, byteData.Length, 0, new AsyncCallback(SendCallback), client); // Begin sending the data to the remote device.
         }
 
@@ -292,7 +293,7 @@ namespace TSST_router
             catch (InvalidOperationException)
             {
                 // If no routing information is found, abandon route method
-                Console.WriteLineStyled(style, Timestamp() + "[ROUTE]\t{{{0}, {1}}} -> X", iface, topLabel);
+                Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> DROP", iface, topLabel);
                 return;
             }
 
@@ -324,18 +325,19 @@ namespace TSST_router
                     Interface outputIface = queryResults.Single();
                     outputIface.EnqueuePacket(packet);
 
-                    Console.WriteLineStyled(style, Timestamp() + "[ROUTE]\t{{{0}, {1}}} -> {{{2}, {3}}})", iface, topLabel, routeEntry.interface_out, string.Join(";", routeEntry.labels_out));
+                    Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> ({2}, {3}))", iface, topLabel, routeEntry.interface_out, string.Join(";", routeEntry.labels_out));
                 }
                 catch (InvalidOperationException)
                 {
                     // In case there is no such interface to output (the routing
                     // infromation is flawed), abandon routing.
-                    Console.WriteLineStyled(style, Timestamp() + "[ROUTE]\t{{{0}, {1}}} -> X", iface, topLabel);
+                    Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> DROP", iface, topLabel);
                 }
             }
             else // ...otherwise, reroute the packet without the top-most label
             {
                 Route(packet, iface);
+                Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> Reroute({0}, {2})", iface, topLabel, packet.labels.Peek());
             }
 
         }
@@ -414,6 +416,9 @@ namespace TSST_router
                     RouteEntry newEntry = order.entry;
                     RouteEntry existingEntry = null;
 
+                    bool entrySwapped = true;
+                    string actionTaken;
+
                     Console.WriteLineStyled(style, Timestamp() + "[MGMT] Received mgmt request");
 
                     try
@@ -425,17 +430,26 @@ namespace TSST_router
                         existingEntry = queryResults.Single();
 
                         routingTable.Remove(existingEntry);
-                        Console.WriteLineStyled(style, Timestamp() + "[MGMT] Removed existing entry.");
                     }
                     catch (InvalidOperationException)
                     {
+                        entrySwapped = false;
                     }
 
                     if (order.add_entry)
                     {
                         routingTable.Add(newEntry);
-                        Console.WriteLineStyled(style, Timestamp() + "[MGMT] Added entry.");
+                        if (entrySwapped)
+                            actionTaken = "Swapped";
+                        else
+                            actionTaken = "Added";
                     }
+                    else
+                    {
+                        actionTaken = "Removed";
+                    }
+
+                    Console.WriteLineStyled(style, Timestamp() + "[MGMT] {0} entry at ({1}, {2})", actionTaken, newEntry.interface_in, newEntry.label_in);
                 }
 
             }
@@ -456,10 +470,11 @@ namespace TSST_router
             // Prepare console styling
             style = new StyleSheet(Color.LightGray);
             style.AddStyle("ROUTE", Color.CornflowerBlue);
-            style.AddStyle("RX",    Color.MediumVioletRed);
+            style.AddStyle("RX",    Color.DeepPink);
             style.AddStyle("TX",    Color.LawnGreen);
             style.AddStyle("MGMT",  Color.Orange);
             style.AddStyle("ERROR", Color.Red);
+            style.AddStyle("DROP",  Color.OrangeRed);
 
             /*
              * Create a new interface for each received ID, and all of them
@@ -525,9 +540,6 @@ namespace TSST_router
                 PrintRouteTable();
 #endif
             }
-            server.Join();
-            client.Join();
-            management.Join();
         }
     }
 }
