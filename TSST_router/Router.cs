@@ -80,12 +80,13 @@ namespace TSST_router
         private ManualResetEvent connectDone = new ManualResetEvent(false); // Thread pausers for transmitter
         private ManualResetEvent sendDone = new ManualResetEvent(false);
         private ManualResetEvent receiveDone = new ManualResetEvent(false);
+        private ManualResetEvent threadStopper = new ManualResetEvent(false);
 
-        // This will be used to time packet shipment and for logging purposes
+        // This will be used for logging purposes
         private Stopwatch time;
-        private long lastTick = 0;
         
         private Timer NMSPollTimer; // A thread that sends UDP keep-alive packets to the NMS
+        private Timer packageSendTimer; // A thread to send TCP packets to the web
 
         // Interface Array - constant set defined on device creation
         // Iterable type makes it easier to handle
@@ -202,47 +203,36 @@ namespace TSST_router
 
         void StartListening()
         {
-            while (true)
+            IPHostEntry ipHostInfo = Dns.GetHostEntry("localhost");
+            IPAddress ipAddress = ipHostInfo.AddressList[0];
+            IPEndPoint localEndPoint = new IPEndPoint(ipAddress, rxPort);
+            Socket listener = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+
+            while (true) // In case something breaks - try again to establish connection
             {
                 try
                 {
-                    IPHostEntry ipHostInfo = Dns.GetHostEntry("localhost");
-                    IPAddress ipAddress = ipHostInfo.AddressList[0];
-                    IPEndPoint localEndPoint = new IPEndPoint(ipAddress, rxPort);
-                    Socket listener = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-
                     listener.Bind(localEndPoint);
                     listener.Listen(100);
 
                     while (true)
                     {
-                        allDone.Reset(); // Set the event to nonsignaled state.
-                        listener.BeginAccept(new AsyncCallback(AcceptCallback), listener); // Start an asynchronous socket to listen for connections.
-                        allDone.WaitOne(); // Wait until a connection is made before continuing.
+                        Socket handler = listener.Accept(); // Thread waits until someone tries to connect
+
+                        Console.WriteLineStyled(style, Timestamp() + "[RX] Connected on {0}", rxPort);
+
+                        StateObject state = new StateObject(); // Create the state object.
+                        state.workSocket = handler;
+
+                        handler.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReadCallback), state);
+
+                        threadStopper.WaitOne();
                     }
                 }
                 catch (SocketException)
                 {
                     Console.WriteLineStyled(style, Timestamp() + "[RX] Reinitiating listener.");
                 }
-            }
-        }
-
-        void AcceptCallback(IAsyncResult ar)
-        {
-            allDone.Set(); // Signal the main thread to continue.
-            Socket listener = (Socket)ar.AsyncState; // Get the socket that handles the client request.
-            try
-            {
-                Socket handler = listener.EndAccept(ar);
-                StateObject state = new StateObject(); // Create the state object.
-                state.workSocket = handler;
-                handler.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReadCallback), state);
-                Console.WriteLineStyled(style, Timestamp() + "[RX] Connected on {0}", rxPort);
-            }
-            catch (SocketException)
-            {
-                
             }
         }
 
@@ -281,47 +271,48 @@ namespace TSST_router
 
         void StartClient()
         {
+            IPHostEntry ipHostInfo = Dns.GetHostEntry("localhost");
+            IPAddress ipAddress = ipHostInfo.AddressList[0];
+            IPEndPoint remoteEP = new IPEndPoint(ipAddress, txPort);
+            Socket client = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp); // Create a TCP/IP socket.
             while (true)
             {
                 try
                 {
-                    IPHostEntry ipHostInfo = Dns.GetHostEntry("localhost");
-                    IPAddress ipAddress = ipHostInfo.AddressList[0];
-                    IPEndPoint remoteEP = new IPEndPoint(ipAddress, txPort);
-                    Socket client = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp); // Create a TCP/IP socket.
-                    client.BeginConnect(remoteEP, new AsyncCallback(ConnectCallback), new ClientConnectState() { clientSocket = client, remoteEP = remoteEP }); // Connect to the remote endpoint.
+                    client.Connect(remoteEP);
+                    Console.WriteLineStyled(style, Timestamp() + "[TX] Connected to {0}", txPort);
 
-                    connectDone.WaitOne(); // Waits until callback manages to connect
+                    packageSendTimer = new Timer(SendPackets, client, 0, sendIntervalMillis);
 
-                    Random rng = new Random(); // Random number generator to fill in second header byte
-
-                    while (true)
-                    {
-                        if (time.ElapsedMilliseconds - lastTick > sendIntervalMillis)
-                        {
-                            lastTick = time.ElapsedMilliseconds;
-                            foreach (Interface iface in routerInterfaces)
-                            {
-                                MPLSPacket[] queuedPackets = iface.GetPacketsAndClear(); // Loads all packets stored in a queue and clears that interface's queue
-                                if (queuedPackets.Length > 0)
-                                {
-                                    AggregatePacket finalPacket = new AggregatePacket(queuedPackets);
-                                    BinaryWrapper socketMessage = MPLSMethods.Serialize(finalPacket);
-
-                                    socketMessage.interfaceId = iface.InterfaceId; // Header byte 1: interface identifier number
-                                    socketMessage.randomNumber = (byte)(rng.Next() % 255); // Header byte 2: Random byte-sized ID generated based on the current timestamp
-
-                                    SendMessage(client, socketMessage.HeaderPlusData());
-                                    sendDone.WaitOne();
-                                    Console.WriteLineStyled(style, Timestamp() + "[TX] ==> {0} packets sent.", queuedPackets.Length);
-                                }
-                            }
-                        }
-                    }
+                    threadStopper.WaitOne();
                 }
                 catch (SocketException)
                 {
 
+                }
+            }
+        }
+
+        void SendPackets(object state)
+        {
+            // Console.WriteLine("Sending");
+            Socket client = (Socket)state;
+
+            foreach (Interface iface in routerInterfaces)
+            {
+                MPLSPacket[] queuedPackets = iface.GetPacketsAndClear(); // Loads all packets stored in a queue and clears that interface's queue
+                if (queuedPackets.Length > 0)
+                {
+                    AggregatePacket finalPacket = new AggregatePacket(queuedPackets);
+                    BinaryWrapper socketMessage = MPLSMethods.Serialize(finalPacket);
+                    Random rng = new Random(); // Random number generator to fill in second header byte
+
+                    socketMessage.interfaceId = iface.InterfaceId; // Header byte 1: interface identifier number
+                    socketMessage.randomNumber = (byte)(rng.Next() % 255); // Header byte 2: Random byte-sized ID generated based on the current timestamp
+
+                    SendMessage(client, socketMessage.HeaderPlusData());
+                    sendDone.WaitOne();
+                    Console.WriteLineStyled(style, Timestamp() + "[TX] ==> {0} packets sent.", queuedPackets.Length);
                 }
             }
         }
@@ -427,9 +418,9 @@ namespace TSST_router
             }
             else // ...otherwise, reroute the packet without the top-most label
             {
-                Route(packet, iface);
                 Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> Reroute({0}, {2})", iface, topLabel, packet.labels.Peek());
                 SendRemoteLog("[ROUTE] ({0}, {1}) ==> Reroute({0}, {2})", iface, topLabel, packet.labels.Peek());
+                Route(packet, iface);
             }
 
         }
@@ -516,8 +507,6 @@ namespace TSST_router
 
                     bool entrySwapped = true;
                     string actionTaken;
-
-                    Console.WriteLineStyled(style, Timestamp() + "[MGMT] Received mgmt request");
 
                     try
                     {
