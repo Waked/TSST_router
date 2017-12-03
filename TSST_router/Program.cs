@@ -22,6 +22,12 @@ namespace TSST_router
          */
         static void Main(string[] args)
         {
+            if (args.Length > 0 && args.Length < 7)
+            {
+                Console.WriteLine("Not enough parameters!\nPress any key to exit...");
+                return;
+            }
+
             try
             {
                 string routerId = args[0];
@@ -52,7 +58,7 @@ namespace TSST_router
             }
             catch (IndexOutOfRangeException)
             {
-                Console.WriteLine("[INIT] Could not read arguments, proceeding to init loopback router with example parameters.");
+                Console.WriteLine("[INIT] Could not parse arguments, proceeding to init loopback router with example parameters.");
                 Router router = new Router("R.2137", 57702, 57702, 58001, 58000, 1000, "defaultRouting.rt", new byte[] { 1, 2, 3 });
             }
             catch (Exception e)

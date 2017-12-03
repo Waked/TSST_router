@@ -1,6 +1,6 @@
 ﻿using Colorful;
 using MPLS;
-using Routing;
+using NHLF;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -74,7 +74,7 @@ namespace TSST_router
         public int sendIntervalMillis; // Interval between packet shipments, in milliseconds [ms]
 
         private string routingTablePath; // Path to existing routing table stored in an .rt file (may be empty)
-        private List<RouteEntry> routingTable; // The routing table is an array of route entries, defined in external library Routing.dll
+        private List<NHLFEntry> routingTable; // The routing table is an array of route entries, defined in external library Routing.dll
 
         private ManualResetEvent allDone = new ManualResetEvent(false); // Thread pauser for receiver
         private ManualResetEvent connectDone = new ManualResetEvent(false); // Thread pausers for transmitter
@@ -93,7 +93,9 @@ namespace TSST_router
         private Interface[] routerInterfaces;
         private byte[] routerInterfaceIds;
 
+        // Colorful.Console stylesheet used to style console output
         StyleSheet style;
+
         public Router(string routerId, int listenPort, int cloudPort, int mgmtLocal, int mgmtRemote, int intervalMs, string filePath, byte[] interfaceIds)
         {
             id = routerId;
@@ -359,7 +361,7 @@ namespace TSST_router
          */
         void Route(MPLSPacket packet, byte iface)
         {
-            RouteEntry routeEntry;
+            NHLFEntry routeEntry;
             int topLabel = packet.labels.Pop();
             try
             {
@@ -431,7 +433,7 @@ namespace TSST_router
             Console.WriteLine("\t┌───────┬───────┬───────┬───────┬───────┐\n" +
                               "\t│If_in  │Lbl_in │Method │If_out │Lbl_out│\n" +
                               "\t├───────┼───────┼───────┼───────┼───────┤");
-            foreach (RouteEntry entry in routingTable)
+            foreach (NHLFEntry entry in routingTable)
             {
                 Console.WriteLine("\t│{0}\t│{1}│{2}│{3}\t│{4}│",
                     entry.interface_in,
@@ -500,10 +502,10 @@ namespace TSST_router
                 {
                     byte[] bytes = listener.Receive(ref groupEP);
 
-                    RouteOrder order = RouteInfoMethods.Deserialize(bytes);
+                    NHLFOrder order = NHLFSerialization.Deserialize(bytes);
 
-                    RouteEntry newEntry = order.entry;
-                    RouteEntry existingEntry = null;
+                    NHLFEntry newEntry = order.entry;
+                    NHLFEntry existingEntry = null;
 
                     bool entrySwapped = true;
                     string actionTaken;
@@ -549,8 +551,6 @@ namespace TSST_router
                 listener.Close();
             }
         }
-
-
-
+        
     }
 }

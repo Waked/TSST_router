@@ -1,4 +1,4 @@
-﻿using Routing;
+﻿using NHLF;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -24,9 +24,9 @@ namespace TSST_router
          * 
          * @returns RouteEntry[] - "list of rows" in the routing table
          */
-        public static List<RouteEntry> ParseRoutingTable(string pathToFile)
+        public static List<NHLFEntry> ParseRoutingTable(string pathToFile)
         {
-            List<RouteEntry> newEntryList = new List<RouteEntry>();
+            List<NHLFEntry> newEntryList = new List<NHLFEntry>();
 
             // If the filepath is empty, return an empty object (the table is clear)
             if (pathToFile == "")
@@ -42,7 +42,7 @@ namespace TSST_router
                     if (row[0] == '#') // Check if a row is a comment - if true, skip it
                         continue;
                     string[] attributes = row.Split('\t');
-                    RouteEntry newEntry = new RouteEntry(
+                    NHLFEntry newEntry = new NHLFEntry(
                         byte.Parse(attributes[0]),
                         int.Parse(attributes[1]),
                         bool.Parse(attributes[2]),

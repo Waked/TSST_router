@@ -96,9 +96,9 @@
       <Project>{622a4dc4-c688-4b77-ab29-64a1c41a0c85}</Project>
       <Name>MPLS</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Routing\Routing.csproj">
+    <ProjectReference Include="..\NHLF\NHLF.csproj">
       <Project>{25cd886a-1714-4e02-b6e7-de3360ca3c86}</Project>
-      <Name>Routing</Name>
+      <Name>NHLF</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
