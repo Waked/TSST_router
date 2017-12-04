@@ -359,14 +359,14 @@ namespace TSST_router
         /*
          * Takes a packet and places it in a corresponding queue for output.
          */
-        void Route(MPLSPacket packet, byte iface)
+        void Route(MPLSPacket packet, byte iface, int[] prev_labels = null)
         {
             NHLFEntry routeEntry;
             int topLabel = packet.labels.Pop();
             try
             {
                 var queryResults = from entry in routingTable
-                                   where entry.interface_in == iface && entry.label_in == topLabel
+                                   where entry.interface_in == iface && entry.label_in == topLabel && entry.additional_info == prev_labels
                                    select entry;
                 // The query should always return a single entry (.Single() throws error if not single ;P)
                 routeEntry = queryResults.Single();
@@ -422,7 +422,9 @@ namespace TSST_router
             {
                 Console.WriteLineStyled(style, Timestamp() + "[ROUTE] ({0}, {1}) ==> Reroute({0}, {2})", iface, topLabel, packet.labels.Peek());
                 SendRemoteLog("[ROUTE] ({0}, {1}) ==> Reroute({0}, {2})", iface, topLabel, packet.labels.Peek());
-                Route(packet, iface);
+                List<int> removed_labels = new List<int>(prev_labels);
+                removed_labels.Add(topLabel);
+                Route(packet, iface, removed_labels.ToArray());
             }
 
         }
