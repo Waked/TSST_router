@@ -433,11 +433,11 @@ namespace TSST_router
         {
             Console.WriteLineStyled(style, Timestamp() + "[ROUTE] Current table:");
             Console.WriteLine("\t┌───────┬───────┬───────┬───────┬───────┬───────┐\n" +
-                              "\t│If_in  │Lbl_in │Method │If_out │Lbl_out│Add_inf│\n" +
+                              "\t│If_in  │Lol_in │Method │If_out │Lbl_out│Add_inf│\n" +
                               "\t├───────┼───────┼───────┼───────┼───────┼───────┤");
             foreach (NHLFEntry entry in routingTable)
             {
-                Console.WriteLine("\t│{0}\t│{1}│{2}│{3}\t│{4}│{5}|",
+                Console.WriteLine("\t│{0}\t│{1}│{2}│{3}\t│{4}│{5}│",
                     entry.interface_in,
                     entry.label_in + (entry.label_in > 999999 ? "" : "\t"), // If the label is greater than a million, place no tab
                     entry.is_swap_or_add ? "Add/Swp" : "Rmv    ",
@@ -448,13 +448,13 @@ namespace TSST_router
 
                 int i = 1;
                 // If there is a label stack, print additional rows:
-                while (entry.labels_out.Length > i || entry.additional_info.Length > i)
+                while (entry.labels_out.Length > i || (entry.additional_info != null && entry.additional_info.Length > i))
                 {
                     string lbl_out_str = "";
                     string add_inf_str = "";
                     if (entry.labels_out.Length > i)
                         lbl_out_str = entry.labels_out[i] + (entry.labels_out[i] > 999999 ? "" : "\t");
-                    if (entry.additional_info.Length > i)
+                    if (entry.additional_info != null && entry.additional_info.Length > i)
                         add_inf_str = entry.additional_info[i] + (entry.additional_info[i] > 999999 ? "" : "\t");
                     Console.WriteLine("\t│\t│\t│\t│\t│{0}│{1}|", lbl_out_str, add_inf_str); // Same story as above - if over million, no tab
                     i++;
