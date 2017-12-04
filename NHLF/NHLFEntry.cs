@@ -14,9 +14,9 @@ namespace NHLF
         public bool is_swap_or_add;
         public byte interface_out;
         public int[] labels_out;
-        public int additional_info;
+        public int[] additional_info;
 
-        public NHLFEntry(byte iface_in, int label_in, bool swap_add, byte iface_out = 0, int[] labels_out = null, int additional_info = 0)
+        public NHLFEntry(byte iface_in, int label_in, bool swap_add, byte iface_out = 0, int[] labels_out = null, int[] additional_info = null)
         {
             interface_in = iface_in;
             this.label_in = label_in;
