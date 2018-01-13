@@ -4,14 +4,13 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{622A4DC4-C688-4B77-AB29-64A1C41A0C85}</ProjectGuid>
+    <ProjectGuid>{C47C44CD-47C7-470B-9071-BBD0BC782AA6}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>MPLS</RootNamespace>
-    <AssemblyName>MPLS</AssemblyName>
+    <RootNamespace>LRMcommunications</RootNamespace>
+    <AssemblyName>LRMcommunications</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -41,11 +40,18 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AggregatePacket.cs" />
-    <Compile Include="BinaryWrapper.cs" />
-    <Compile Include="MPLSMethods.cs" />
-    <Compile Include="MPLSPacket.cs" />
+    <Compile Include="AllocateRequest.cs" />
+    <Compile Include="AllocateResponse.cs" />
+    <Compile Include="DeallocateRequest.cs" />
+    <Compile Include="DeallocateResponse.cs" />
+    <Compile Include="KeepAlive.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Communications\Communications.csproj">
+      <Project>{7a62c3e6-4ea0-4de5-9f6a-4162f212416a}</Project>
+      <Name>Communications</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

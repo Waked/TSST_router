@@ -10,7 +10,7 @@ namespace NHLF
 {
     public static class NHLFSerialization
     {
-        public static byte[] Serialize(NHLFOrder order)
+        public static byte[] Serialize(NHLFMgmtMessage order)
         {
             using (var memoryStream = new MemoryStream())
             {
@@ -19,10 +19,10 @@ namespace NHLF
             }
         }
 
-        public static NHLFOrder Deserialize(byte[] data)
+        public static NHLFMgmtMessage Deserialize(byte[] data)
         {
             using (var memoryStream = new MemoryStream(data))
-                return (NHLFOrder)(new BinaryFormatter()).Deserialize(memoryStream);
+                return (NHLFMgmtMessage)(new BinaryFormatter()).Deserialize(memoryStream);
         }
     }
 }
