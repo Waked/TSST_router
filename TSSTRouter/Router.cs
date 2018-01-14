@@ -24,40 +24,50 @@ namespace TSSTRouter
     {
         // Config information
         public string id;
+        public string autonomicSystemId;
+        public string subnetworkId;
+        public ushort wirecloudLocalPort;
+        public ushort wirecloudRemotePort;
         public ushort mgmtLocalPort;
-        public ushort mgmtRemotePort;
+        public ushort connectionControllerPort;
         public int sendIntervalMillis; // Interval between packet shipments, in milliseconds [ms]
+        private string routingTablePath; // Path to existing routing table stored in an .rt file (may be empty)
 
         // Router components
         private LinkResourceManager LRM;
         private TransportFunction transportFunction;
         private Dictionary<byte, uint> routerInterfaceDefs;
 
-        private string routingTablePath; // Path to existing routing table stored in an .rt file (may be empty)
-        
-        private Timer NMSPollTimer; // A thread that sends UDP keep-alive packets to the NMS
+        // Threads
+        private Thread managementThread;
+        private List<Timer> periodicTasks; // Collection containing threads executed periodically
 
-        public Router(string routerId, ushort listenPort, ushort cloudPort,ushort mgmtLocal, ushort mgmtRemote,
-            int intervalMs, string filePath, Dictionary<byte, uint> interfaceDefinitions)
+        // Networking elements
+        IPAddress localhost = IPAddress.Parse("127.0.0.1");
+        Socket mgmtTxSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp); // Instant initialization
+
+        public Router(
+            string routerId,
+            string asId,
+            string subnetworkId,
+            ushort wirecloudLocalPort,
+            ushort wirecloudRemotePort,
+            ushort mgmtLocalPort,
+            ushort connectionControllerPort,
+            int intervalMs, string filePath,
+            Dictionary<byte, uint> interfaceDefinitions
+            )
         {
             id = routerId;
-            mgmtLocalPort = mgmtLocal;
-            mgmtRemotePort = mgmtRemote;
+            this.mgmtLocalPort = mgmtLocalPort;
+            this.connectionControllerPort = connectionControllerPort;
+            this.wirecloudLocalPort = wirecloudLocalPort;
+            this.wirecloudRemotePort = wirecloudRemotePort;
             sendIntervalMillis = intervalMs;
             routingTablePath = filePath;
             routerInterfaceDefs = interfaceDefinitions;
-            
-            LRM = new LinkResourceManager(routerId, interfaceDefinitions);
-            transportFunction = new TransportFunction(intervalMs, listenPort, cloudPort, interfaceDefinitions);
 
             Init();
-        }
-
-        // Constructor - two parameters are required, listening port and remote (wirecloud) port
-        public Router(string routerId, ushort listenPort, ushort cloudPort, ushort mgmtLocal, ushort mgmtRemote,
-            int intervalMs, Dictionary<byte, uint> interfaceDefinitions)
-            : this(routerId, listenPort, cloudPort, mgmtLocal, mgmtRemote, intervalMs, "", interfaceDefinitions)
-        {
         }
 
         void Init()
@@ -79,30 +89,35 @@ namespace TSSTRouter
                 Log.WriteLine("[ERROR] Failed to load routing table from file (file not found)");
             }
 
+            // Console setup and initial printouts
             Console.Title = id;
             Log.PrintAsciiTitle(id);
-
             Log.WriteLine(true, "Ports: Wirecloud({0}, {1}), NMS({2}, {3})",
                 transportFunction.RxPort, transportFunction.TxPort,
-                mgmtLocalPort, mgmtRemotePort);
+                mgmtLocalPort, connectionControllerPort);
             Log.WriteLine(true, "Interfaces: " + string.Join(", ", routerInterfaceDefs.ToString()));
             Log.WriteLine(true, "======");
-
-            Thread management = new Thread(StartManagement);
+            
             try
             {
                 Log.WriteLine("Starting router... ");
                 Log.ResetTimer();
-                management.Start();
+                
+                // Those objects create and start threads upon construction
+                LRM = new LinkResourceManager(id, routerInterfaceDefs);
+                transportFunction = new TransportFunction(sendIntervalMillis, wirecloudLocalPort, wirecloudRemotePort, routerInterfaceDefs);
+
+                managementThread = new Thread(StartManagement);
+                managementThread.Start();
             }
-            catch (Exception e)
+            catch (ThreadStartException tse)
             {
                 Log.WriteLine("failed:");
-                Console.WriteLine(e);
+                Console.WriteLine(tse);
             }
 
             // Launch
-            StartPollingNMS(58000);
+            //StartPollingNMS(58000);
 
             while (true)
             {
@@ -122,32 +137,15 @@ namespace TSSTRouter
                 }
             }
         }
-        
-        class PollStateObject
+
+        // Method to send management messages over UDP to a specified port.
+        // The messages must be derivatives of the Message object in the
+        // Communications library.
+        void sendMgmtMsg(ushort port, Communications.Message msg)
         {
-            public byte[] msg;
-            public Socket sock;
-            public IPEndPoint ep;
-
-        }
-        private void PollNMS(object state)
-        {
-            PollStateObject pso = (PollStateObject)state;
-            pso.sock.SendTo(pso.msg, pso.ep);
-        }
-
-        void StartPollingNMS(int remotePort)
-        {
-            IPAddress ipAddress = IPAddress.Parse("127.0.0.1");
-            IPEndPoint remoteEP = new IPEndPoint(ipAddress, mgmtRemotePort);
-            Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-
-            byte[] msg = Encoding.ASCII.GetBytes(id);
-            int interval = sendIntervalMillis / 2;
-
-            PollStateObject pollStateObject = new PollStateObject() { msg = msg, sock = s, ep = remoteEP };
-
-            NMSPollTimer = new Timer(PollNMS, pollStateObject, 0, interval);
+            IPEndPoint remoteEP = new IPEndPoint(localhost, port);
+            byte[] data = Communications.Serialization.Serialize(msg);
+            mgmtTxSocket.SendTo(data, remoteEP);
         }
 
         void StartManagement()

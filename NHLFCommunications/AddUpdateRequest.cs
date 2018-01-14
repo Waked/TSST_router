@@ -11,12 +11,14 @@ namespace NHLFCommunications
     public class AddUpdateRequest : Communications.Message
     {
         public NHLFEntry entry;
+        public int seq;
 
-        public AddUpdateRequest(string senderID, int senderPort, NHLFEntry entry)
+        public AddUpdateRequest(string senderID, int senderPort, int seq, NHLFEntry entry)
         {
             messageType = "NHLF.AddUpdateRequest";
             this.senderID = senderID;
             this.senderPort = senderPort;
+            this.seq = seq;
             this.entry = entry;
         }
     }

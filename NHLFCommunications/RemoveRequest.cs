@@ -11,8 +11,9 @@ namespace NHLFCommunications
     public class RemoveRequest : Communications.Message
     {
         public int connectionID;
+        public int seq;
 
-        public RemoveRequest(string senderID, int senderPort, int connectionID)
+        public RemoveRequest(string senderID, int senderPort, int seq, int connectionID)
         {
             messageType = "NHLF.RemoveRequest";
             this.senderID = senderID;
