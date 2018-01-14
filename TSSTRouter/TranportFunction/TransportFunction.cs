@@ -248,7 +248,7 @@ namespace TSSTRouter
                     entry.interface_in + "\t",
                     entry.label_in + (entry.label_in > 999999 ? "" : "\t"), // If the label is greater than a million, place no tab
                     entry.is_swap_or_add ? "Add/Swp" : "Rmv    ",
-                    entry.is_swap_or_add ? entry.interface_out.ToString() : "" + "\t", // If the method is "Remove", no need to print this
+                    (entry.is_swap_or_add ? entry.interface_out.ToString() : "") + "\t", // If the method is "Remove", no need to print this
                     entry.is_swap_or_add ? entry.labels_out[0] + (entry.labels_out[0] > 999999 ? "" : "\t") : ""  // Same as above two
                     );
 

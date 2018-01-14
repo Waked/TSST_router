@@ -9,6 +9,9 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using MPLSSim_Logger;
+using NHLFCommunications;
+using LRMcommunications;
+using LRMRCCommunications;
 
 namespace TSSTRouter
 {
@@ -75,25 +78,11 @@ namespace TSSTRouter
             LoggingLib.Connect();
             LoggingLib.SendMessage(string.Format("This is a message from router (ID: {0})", id));
             
-            /*
-             * Initialize routing table - in case the path is an empty
-             * string or the file does not exist, an empty table will
-             * be created.
-             */
-            try
-            {
-                transportFunction.ParseRoutingTable(routingTablePath);
-            }
-            catch (FileNotFoundException) // ParseRoutingTable throws FileNotFoundException if file is not found (duh!)
-            {
-                Log.WriteLine("[ERROR] Failed to load routing table from file (file not found)");
-            }
-
             // Console setup and initial printouts
             Console.Title = id;
             Log.PrintAsciiTitle(id);
             Log.WriteLine(true, "Ports: Wirecloud({0}, {1}), NMS({2}, {3})",
-                transportFunction.RxPort, transportFunction.TxPort,
+                wirecloudLocalPort, wirecloudRemotePort,
                 mgmtLocalPort, connectionControllerPort);
             Log.WriteLine(true, "Interfaces: " + string.Join(", ", routerInterfaceDefs.ToString()));
             Log.WriteLine(true, "======");
@@ -116,6 +105,20 @@ namespace TSSTRouter
                 Console.WriteLine(tse);
             }
 
+            /*
+             * Initialize routing table - in case the path is an empty
+             * string or the file does not exist, an empty table will
+             * be created.
+             */
+            try
+            {
+                transportFunction.ParseRoutingTable(routingTablePath);
+            }
+            catch (FileNotFoundException) // ParseRoutingTable throws FileNotFoundException if file is not found (duh!)
+            {
+                Log.WriteLine("[ERROR] Failed to load routing table from file (file not found)");
+            }
+            
             // Launch
             //StartPollingNMS(58000);
 
@@ -132,6 +135,12 @@ namespace TSSTRouter
                         transportFunction.EnqueuePacketOnFirstQueue(testPacket);
                         break;
 #endif
+                    case ConsoleKey.U:
+                        NHLFEntry entry = new NHLFEntry(10, 1, 17, true, 2, new int[] { 35 } );
+                        AddUpdateRequest testUpdateReq = new AddUpdateRequest("Helo it me", mgmtLocalPort, 2137, entry);
+                        sendMgmtMsg(mgmtLocalPort, testUpdateReq);
+                        break;
+
                     default:
                         break;
                 }
@@ -159,13 +168,25 @@ namespace TSSTRouter
                 {
                     byte[] bytes = listener.Receive(ref groupEP);
 
-                    NHLFMgmtMessage mgmtMessage = NHLFSerialization.Deserialize(bytes);
+                    Communications.Message msg = Communications.Serialization.Deserialize(bytes);
 
-                    NHLFEntry newEntry = mgmtMessage.entry;
+                    Log.WriteLine("[MGMT] {0} from {1}, port {2})", msg.messageType, msg.senderID, msg.senderPort);
                     
-                    string result = transportFunction.UpdateRoutingTable(newEntry, mgmtMessage.addOrSwap);
+                    switch (msg.messageType)
+                    {
+                        case "NHLF.AddUpdateRequest":
+                            AddUpdateRequest addUpdateReq = (AddUpdateRequest) msg;
+                            transportFunction.UpdateRoutingTable(addUpdateReq.entry, true);
+                            break;
+                        default:
+                            break;
+                    }
+                    
+                    // NHLFMgmtMessage mgmtMessage = NHLFSerialization.Deserialize(bytes);
 
-                    Log.WriteLine("[MGMT] {0} entry at ({1}, {2})", result, newEntry.interface_in, newEntry.label_in);
+                    //NHLFEntry newEntry = mgmtMessage.entry;
+                    
+                    //string result = transportFunction.UpdateRoutingTable(newEntry, mgmtMessage.addOrSwap);
                 }
 
             }

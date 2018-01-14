@@ -84,9 +84,17 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Communications\Communications.csproj">
+      <Project>{7a62c3e6-4ea0-4de5-9f6a-4162f212416a}</Project>
+      <Name>Communications</Name>
+    </ProjectReference>
     <ProjectReference Include="..\LRMcommunications\LRMcommunications.csproj">
       <Project>{c47c44cd-47c7-470b-9071-bbd0bc782aa6}</Project>
       <Name>LRMcommunications</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\LRMRCCommunications\LRMRCCommunications.csproj">
+      <Project>{03ceda4b-9de4-4395-837a-98bf7e0806fd}</Project>
+      <Name>LRMRCCommunications</Name>
     </ProjectReference>
     <ProjectReference Include="..\MPLS\MPLS.csproj">
       <Project>{622a4dc4-c688-4b77-ab29-64a1c41a0c85}</Project>
