@@ -74,7 +74,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Router.cs" />
     <Compile Include="TranportFunction\TELinkEnd.cs" />
-    <Compile Include="TranportFunction\MediaAccessController.cs" />
+    <Compile Include="TranportFunction\MediumAccessController.cs" />
     <Compile Include="TranportFunction\TransportFunction.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -91,6 +91,10 @@
     <ProjectReference Include="..\LRMcommunications\LRMcommunications.csproj">
       <Project>{c47c44cd-47c7-470b-9071-bbd0bc782aa6}</Project>
       <Name>LRMcommunications</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\LRMIntercom\LRMIntercom.csproj">
+      <Project>{d1cd3227-36fa-4259-9e02-938e47d4fff2}</Project>
+      <Name>LRMIntercom</Name>
     </ProjectReference>
     <ProjectReference Include="..\LRMRCCommunications\LRMRCCommunications.csproj">
       <Project>{03ceda4b-9de4-4395-837a-98bf7e0806fd}</Project>

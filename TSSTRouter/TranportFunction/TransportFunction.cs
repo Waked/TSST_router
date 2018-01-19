@@ -7,13 +7,14 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LRMIntercom;
 
 namespace TSSTRouter
 {
     partial class TransportFunction
     {
         // TransportFunction components
-        MediaAccessController MAC;
+        MediumAccessController MAC;
         private TELinkEnd[] routerInterfaces;
 
         // TransportFunction structures
@@ -24,9 +25,14 @@ namespace TSSTRouter
         public ushort RxPort { get; private set; }
         public ushort TxPort { get; private set; }
 
+        // Transport network-passed packet handler
+        public delegate void HandleMgmtPackets(byte localsnpp, GenericMessage genmsg);
+        public HandleMgmtPackets handleMgmtPackets = null;
+
+
         public TransportFunction(int operationInterval, ushort rxPort, ushort txPort, Dictionary<byte, uint> interfaceDefinitions)
         {
-            MAC = new MediaAccessController(rxPort, txPort, PacketHandler);
+            MAC = new MediumAccessController(rxPort, txPort, PacketHandler);
             RxPort = rxPort;
             TxPort = txPort;
             routingTable = new List<NHLFEntry>();
@@ -43,17 +49,18 @@ namespace TSSTRouter
             routerInterfaces = ifaces.ToArray();
 
             // Start periodically sending all packets enqueued in the interfaces
-            packageSendTimer = new Timer(SendPackets, null, 0, operationInterval);
+            packageSendTimer = new Timer(SendPacketsCallback, null, 0, operationInterval);
 
             Initialize();
         }
+
 
         private void Initialize()
         {
             MAC.Start();
         }
 
-        void SendPackets(object state)
+        void SendPacketsCallback(object state)
         {
             foreach (TELinkEnd iface in routerInterfaces)
             {
@@ -65,19 +72,45 @@ namespace TSSTRouter
 
                     MAC.SendData(wrappedPacket, iface.Id);
 
-                    Log.WriteLine("[TX] ==> {0} packets sent.", queuedPackets.Length);
+                    Log.WriteLine("[TX {0}] => {1} MPLS packet(s)", iface.Id, queuedPackets.Length);
                 }
             }
+        }
+
+        public void SendPeerMessage(byte snppId, GenericMessage genmsg)
+        {
+            //Log.WriteLine("[TX] PeerMessage: {0}, SNPP {1}", genmsg.messageType, snppId);
+
+            MPLSPacket packet = new MPLSPacket(new int[] { 0 }, "");
+            packet.managementObject = genmsg;
+
+            AggregatePacket aggregatePacket = new AggregatePacket(new MPLSPacket[] { packet });
+            BinaryWrapper wrappedPacket = MPLSMethods.Serialize(aggregatePacket);
+
+            MAC.SendData(wrappedPacket, snppId);
+            //Log.WriteLine("[TX {0}] => {1}, iface {2}", snppId, genmsg.messageType, snppId);
         }
 
         void PacketHandler(BinaryWrapper packet, byte interfaceId)
         {
             AggregatePacket receivedPacket = MPLSMethods.Deserialize(packet);
 
-            Log.WriteLine("[IF{0}] Forwarding {1} packets", interfaceId, receivedPacket.packets.Length);
+            //Log.WriteLine("[RX {0}] \t {1} packet(s)", interfaceId, receivedPacket.packets.Length);
 
             foreach (MPLSPacket mplspacket in receivedPacket.packets)
-                Route(mplspacket, interfaceId);
+            {
+                if (mplspacket.managementObject != null)
+                {
+                    GenericMessage genmsg = (GenericMessage)mplspacket.managementObject;
+                    //Log.WriteLine("[RX {0}] \t {1}", interfaceId, genmsg.messageType);
+                    handleMgmtPackets(interfaceId, genmsg);
+                }
+                else
+                {
+                    Log.WriteLine("[RX] Packet on interface {0}", interfaceId);
+                    Route(mplspacket, interfaceId);
+                }
+            }
         }
 
         /*

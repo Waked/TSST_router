@@ -37,6 +37,7 @@ namespace TSSTRouter
                     ushort wirecloudTxPort      = Convert.ToUInt16(config["wirecloudLocalPort"]);
                     ushort mgmtRxPort           = Convert.ToUInt16(config["managementLocalPort"]);
                     ushort ccPort               = Convert.ToUInt16(config["ccPort"]);
+                    ushort rcPort               = Convert.ToUInt16(config["rcPort"]);
                     int intervalMs              = Convert.ToInt32(config["operationInterval"]);
                     string ifaceDefString       = Convert.ToString(config["interfaces"]);
                     string fibPath              = "";
@@ -50,6 +51,7 @@ namespace TSSTRouter
                     }
                     catch (Exception)
                     {
+                        fibPath = "";
                     }
 
                     new Router(
@@ -60,6 +62,7 @@ namespace TSSTRouter
                         wirecloudTxPort,
                         mgmtRxPort,
                         ccPort,
+                        rcPort,
                         intervalMs,
                         fibPath,
                         interfaceDefinitions);
@@ -81,9 +84,10 @@ namespace TSSTRouter
                     57702,
                     58001,
                     58000,
+                    57000,
                     1000,
                     "defaultRouting.rt",
-                    new Dictionary<byte, uint> { [1] = 100, [2] = 100, [3] = 100 });
+                    new Dictionary<byte, uint> { [1] = 100, [2] = 100, [3] = 200 });
             }
         }
 

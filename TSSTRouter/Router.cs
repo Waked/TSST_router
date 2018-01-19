@@ -33,6 +33,7 @@ namespace TSSTRouter
         public ushort wirecloudRemotePort;
         public ushort mgmtLocalPort;
         public ushort connectionControllerPort;
+        public ushort routingControllerPort;
         public int sendIntervalMillis; // Interval between packet shipments, in milliseconds [ms]
         private string routingTablePath; // Path to existing routing table stored in an .rt file (may be empty)
 
@@ -57,6 +58,7 @@ namespace TSSTRouter
             ushort wirecloudRemotePort,
             ushort mgmtLocalPort,
             ushort connectionControllerPort,
+            ushort routingControllerPort,
             int intervalMs, string filePath,
             Dictionary<byte, uint> interfaceDefinitions
             )
@@ -64,6 +66,7 @@ namespace TSSTRouter
             id = routerId;
             this.mgmtLocalPort = mgmtLocalPort;
             this.connectionControllerPort = connectionControllerPort;
+            this.routingControllerPort = routingControllerPort;
             this.wirecloudLocalPort = wirecloudLocalPort;
             this.wirecloudRemotePort = wirecloudRemotePort;
             sendIntervalMillis = intervalMs;
@@ -93,9 +96,27 @@ namespace TSSTRouter
                 Log.ResetTimer();
                 
                 // Those objects create and start threads upon construction
-                LRM = new LinkResourceManager(id, routerInterfaceDefs);
-                transportFunction = new TransportFunction(sendIntervalMillis, wirecloudLocalPort, wirecloudRemotePort, routerInterfaceDefs);
+                LRM = new LinkResourceManager(
+                    id,
+                    autonomicSystemId,
+                    subnetworkId,
+                    connectionControllerPort,
+                    routingControllerPort,
+                    routerInterfaceDefs
+                    );
+                transportFunction = new TransportFunction(
+                    sendIntervalMillis,
+                    wirecloudLocalPort,
+                    wirecloudRemotePort,
+                    routerInterfaceDefs
+                    );
 
+                // Pass callbacks to components
+                LRM.sendMgmtMessage = SendMgmtMsg;
+                LRM.sendPeerMessage = transportFunction.SendPeerMessage;
+                transportFunction.handleMgmtPackets = LRM.HandleManagementPacket;
+
+                // Launch rotuer management thread
                 managementThread = new Thread(StartManagement);
                 managementThread.Start();
             }
@@ -134,13 +155,13 @@ namespace TSSTRouter
                         MPLSPacket testPacket = new MPLSPacket(new int[] { 2137 }, "This is a test MPLSMessage.");
                         transportFunction.EnqueuePacketOnFirstQueue(testPacket);
                         break;
-#endif
+
                     case ConsoleKey.U:
                         NHLFEntry entry = new NHLFEntry(10, 1, 17, true, 2, new int[] { 35 } );
                         AddUpdateRequest testUpdateReq = new AddUpdateRequest("Helo it me", mgmtLocalPort, 2137, entry);
-                        sendMgmtMsg(mgmtLocalPort, testUpdateReq);
+                        SendMgmtMsg(mgmtLocalPort, testUpdateReq);
                         break;
-
+#endif
                     default:
                         break;
                 }
@@ -150,7 +171,7 @@ namespace TSSTRouter
         // Method to send management messages over UDP to a specified port.
         // The messages must be derivatives of the Message object in the
         // Communications library.
-        void sendMgmtMsg(ushort port, Communications.Message msg)
+        void SendMgmtMsg(ushort port, Communications.Message msg)
         {
             IPEndPoint remoteEP = new IPEndPoint(localhost, port);
             byte[] data = Communications.Serialization.Serialize(msg);
