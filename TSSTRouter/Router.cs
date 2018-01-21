@@ -240,7 +240,15 @@ namespace TSSTRouter
                             break;
                         case "DeallocateRequest":
                             DeallocateRequest deallocateReq = (DeallocateRequest)msg;
-
+                            LRM.ReleaseAsignedBandwidth(deallocateReq.connectionID);
+                            SendManagementMsg(
+                                (ushort)deallocateReq.senderPort,
+                                new DeallocateResponse(
+                                    id,
+                                    mgmtLocalPort,
+                                    deallocateReq.seq
+                                    )
+                                );
                             break;
 
 #if DEBUG
