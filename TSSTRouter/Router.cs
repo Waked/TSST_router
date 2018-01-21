@@ -106,8 +106,8 @@ namespace TSSTRouter
                     autonomicSystemId,
                     subnetworkId,
                     connectionControllerPort,
-                    mgmtLocalPort,
                     routingControllerPort,
+                    mgmtLocalPort,
                     routerInterfaceDefs
                     );
                 transportFunction = new TransportFunction(
