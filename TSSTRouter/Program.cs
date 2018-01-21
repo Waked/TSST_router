@@ -33,8 +33,8 @@ namespace TSSTRouter
                     string routerId             = Convert.ToString(config["id"]); // Converting string to string for readability
                     string autonomicSystemId    = Convert.ToString(config["asid"]);
                     string subnetworkId         = Convert.ToString(config["snid"]);
-                    ushort wirecloudRxPort      = Convert.ToUInt16(config["wirecloudRemotePort"]);
-                    ushort wirecloudTxPort      = Convert.ToUInt16(config["wirecloudLocalPort"]);
+                    ushort wirecloudTxPort      = Convert.ToUInt16(config["wirecloudRemotePort"]);
+                    ushort wirecloudRxPort      = Convert.ToUInt16(config["wirecloudLocalPort"]);
                     ushort mgmtRxPort           = Convert.ToUInt16(config["managementLocalPort"]);
                     ushort ccPort               = Convert.ToUInt16(config["ccPort"]);
                     ushort rcPort               = Convert.ToUInt16(config["rcPort"]);

@@ -40,7 +40,7 @@ namespace TSSTRouter
             public MediumAccessController(ushort rxPort, ushort txPort, PacketHandlingCallback packetHandlingCallback)
             {
                 this.rxPort = rxPort;
-                this.txPort = rxPort;
+                this.txPort = txPort;
                 this.packetHandlingCallback = packetHandlingCallback;
             }
 
