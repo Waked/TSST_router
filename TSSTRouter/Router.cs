@@ -106,6 +106,7 @@ namespace TSSTRouter
                     autonomicSystemId,
                     subnetworkId,
                     connectionControllerPort,
+                    mgmtLocalPort,
                     routingControllerPort,
                     routerInterfaceDefs
                     );

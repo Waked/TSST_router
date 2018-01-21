@@ -21,6 +21,7 @@ namespace TSSTRouter
         string snId;
         ushort ccPort;
         ushort rcPort;
+        ushort localMgmtPort;
         private List<Assignment> assignments;
         Dictionary<byte, uint> interfaceDefinitions;
         Dictionary<byte, PeerInformation> peers;
@@ -36,15 +37,25 @@ namespace TSSTRouter
         // Threads
         Timer sendPeerUpdateRequests = null;
         Timer sendRCUpdate = null;
+        Timer sendCCKeepAlive = null;
 
         // Constructor
-        public LinkResourceManager(string routerId, string asId, string snId, ushort ccPort, ushort rcPort, Dictionary<byte, uint> interfaceDefinitions)
+        public LinkResourceManager(
+            string routerId,
+            string asId,
+            string snId,
+            ushort ccPort,
+            ushort rcPort,
+            ushort localMgmtPort,
+            Dictionary<byte, uint> interfaceDefinitions
+            )
         {
             this.routerId = routerId;
             this.asId = asId;
             this.snId = snId;
             this.ccPort = ccPort;
             this.rcPort = rcPort;
+            this.localMgmtPort = localMgmtPort;
             this.interfaceDefinitions = interfaceDefinitions;
 
             // Initialization
@@ -59,6 +70,7 @@ namespace TSSTRouter
             // Initialize threads
             sendPeerUpdateRequests = new Timer(SendUpdateRequestsCallback, null, 1000, 3000); // Begin after 1 sec, repeat every 3 sec
             sendRCUpdate = new Timer(SendRCUpdateCallback, null, Router.rng.Next(1, 11) * 100, 500); // Begin roughly random, repeat every 0.5 sec
+            sendCCKeepAlive = new Timer(SendCCKeepAliveCallback, null, 0, 1000);
         }
 
 
@@ -112,6 +124,12 @@ namespace TSSTRouter
             while (query.Count() > 1)
                 label++;
             return label;
+        }
+
+        // Sends a simple KeepAlive message to the Connection Controller.
+        public void SendCCKeepAliveCallback(object state)
+        {
+            sendMgmtMessage?.Invoke(ccPort, new LRMcommunications.KeepAlive(routerId, localMgmtPort));
         }
 
         // This method sends StatusUpdateRequest on all available SNPPs (interfaces),
