@@ -142,7 +142,7 @@ namespace TSSTRouter
                 {
                     StatusUpdateRequest request = new StatusUpdateRequest(routerId, asId, snId, kvpair.Key);
                     sendPeerMessage(kvpair.Key, request);
-                    Thread.Sleep(20); // Desync in order to prevent packet merging
+                    Thread.Sleep(50); // Desync in order to prevent packet merging
                 }
                 //Log.WriteLine("[LRM] Sent peer update requests");
             }
@@ -158,8 +158,11 @@ namespace TSSTRouter
         {
             foreach (KeyValuePair<byte, uint> ifaceDef in interfaceDefinitions)
             {
-                Thread.Sleep(10 + Router.rng.Next(1, 10)); // Avoid message collision
-                SendRCUpdateSingle(ifaceDef.Key); // Execute a more general method for given SNPP
+                if (peers[ifaceDef.Key] != null && peers[ifaceDef.Key].isActive)
+                {
+                    Thread.Sleep(10 + Router.rng.Next(1, 10)); // Avoid message collision
+                    SendRCUpdateSingle(ifaceDef.Key); // Execute a more general method for given SNPP
+                }
             }
         }
         
