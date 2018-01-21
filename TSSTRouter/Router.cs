@@ -25,6 +25,9 @@ namespace TSSTRouter
     // Model routera MPLS łączący się z tzw. chmurą kablową przez dwa sockety (uplink i downlink)
     class Router
     {
+        // Static RNG used in other router components
+        public static Random rng = new Random();
+
         // Config information
         public string id;
         public string autonomicSystemId;
@@ -44,7 +47,7 @@ namespace TSSTRouter
 
         // Threads
         private Thread managementThread;
-        private List<Timer> periodicTasks; // Collection containing threads executed periodically
+        //private List<Timer> periodicTasks; // Collection containing threads executed periodically
 
         // Networking elements
         IPAddress localhost = IPAddress.Parse("127.0.0.1");
@@ -64,6 +67,8 @@ namespace TSSTRouter
             )
         {
             id = routerId;
+            autonomicSystemId = asId;
+            this.subnetworkId = subnetworkId;
             this.mgmtLocalPort = mgmtLocalPort;
             this.connectionControllerPort = connectionControllerPort;
             this.routingControllerPort = routingControllerPort;
@@ -112,12 +117,12 @@ namespace TSSTRouter
                     );
 
                 // Pass callbacks to components
-                LRM.sendMgmtMessage = SendMgmtMsg;
+                LRM.sendMgmtMessage = SendManagementMsg;
                 LRM.sendPeerMessage = transportFunction.SendPeerMessage;
                 transportFunction.handleMgmtPackets = LRM.HandleManagementPacket;
 
                 // Launch rotuer management thread
-                managementThread = new Thread(StartManagement);
+                managementThread = new Thread(ReceiveManagementMsg);
                 managementThread.Start();
             }
             catch (ThreadStartException tse)
@@ -155,11 +160,14 @@ namespace TSSTRouter
                         MPLSPacket testPacket = new MPLSPacket(new int[] { 2137 }, "This is a test MPLSMessage.");
                         transportFunction.EnqueuePacketOnFirstQueue(testPacket);
                         break;
-
                     case ConsoleKey.U:
                         NHLFEntry entry = new NHLFEntry(10, 1, 17, true, 2, new int[] { 35 } );
                         AddUpdateRequest testUpdateReq = new AddUpdateRequest("Helo it me", mgmtLocalPort, 2137, entry);
-                        SendMgmtMsg(mgmtLocalPort, testUpdateReq);
+                        SendManagementMsg(mgmtLocalPort, testUpdateReq);
+                        break;
+                    case ConsoleKey.R:
+                        RemoveRequest testRemoveReq = new RemoveRequest("Helo it me", mgmtLocalPort, 2137, 10);
+                        SendManagementMsg(mgmtLocalPort, testRemoveReq);
                         break;
 #endif
                     default:
@@ -171,14 +179,18 @@ namespace TSSTRouter
         // Method to send management messages over UDP to a specified port.
         // The messages must be derivatives of the Message object in the
         // Communications library.
-        void SendMgmtMsg(ushort port, Communications.Message msg)
+        void SendManagementMsg(ushort port, Communications.Message msg)
         {
             IPEndPoint remoteEP = new IPEndPoint(localhost, port);
             byte[] data = Communications.Serialization.Serialize(msg);
             mgmtTxSocket.SendTo(data, remoteEP);
         }
 
-        void StartManagement()
+        // Method invoked in a separate thread, sets up a UDP listener
+        // that listens for anything on a management port, then detemines
+        // what kind of message it is (with what information) and handles
+        // the response.
+        void ReceiveManagementMsg()
         {
             UdpClient listener = new UdpClient(mgmtLocalPort);
             IPEndPoint groupEP = new IPEndPoint(IPAddress.Parse("127.0.0.1"), mgmtLocalPort);
@@ -191,14 +203,59 @@ namespace TSSTRouter
 
                     Communications.Message msg = Communications.Serialization.Deserialize(bytes);
 
-                    Log.WriteLine("[MGMT] {0} from {1}, port {2})", msg.messageType, msg.senderID, msg.senderPort);
+                    Log.WriteLine("[MGMT] {1}, port {2}: {0})", msg.messageType, msg.senderID, msg.senderPort);
                     
                     switch (msg.messageType)
                     {
                         case "NHLF.AddUpdateRequest":
-                            AddUpdateRequest addUpdateReq = (AddUpdateRequest) msg;
+                            AddUpdateRequest addUpdateReq = (AddUpdateRequest)msg;
                             transportFunction.UpdateRoutingTable(addUpdateReq.entry, true);
+                            // !!! IT CAN GO TERRIBLY WRONG HERE !!!
+                            SendManagementMsg(
+                                (ushort)addUpdateReq.senderPort,
+                                new AddUpdateResponse(id, mgmtLocalPort, addUpdateReq.seq, true)
+                                );
                             break;
+                        case "NHLF.RemoveRequest":
+                            RemoveRequest removeReq = (RemoveRequest)msg;
+                            bool status = transportFunction.RemoveFromRoutingTable(removeReq.connectionID);
+                            SendManagementMsg(
+                                (ushort)removeReq.senderPort,
+                                new RemoveResponse(id, mgmtLocalPort, removeReq.seq, status)
+                                );
+                            break;
+                        case "AllocateRequest":
+                            AllocateRequest allocateReq = (AllocateRequest)msg;
+                            uint label = LRM.AssignBandwidthOnInterface(allocateReq.interfaceID, (uint)allocateReq.bitrate, allocateReq.connectionID);
+                            SendManagementMsg(
+                                (ushort)allocateReq.senderPort,
+                                new AllocateResponse(
+                                    id,
+                                    mgmtLocalPort,
+                                    (int)label,
+                                    allocateReq.seq
+                                    )
+                                );
+                            break;
+                        case "DeallocateRequest":
+                            DeallocateRequest deallocateReq = (DeallocateRequest)msg;
+
+                            break;
+
+#if DEBUG
+                        case "NHLF.AddUpdateResponse":
+                            AddUpdateResponse addUpdateResponse = (AddUpdateResponse)msg;
+                            Log.WriteLine("[CCI] AddUpdateRequest for {0} {1}.", addUpdateResponse.senderID, addUpdateResponse.status ? "successful" : "failed");
+                            break;
+                        case "NHLF.RemoveResponse":
+                            RemoveResponse removeResp = (RemoveResponse)msg;
+                            Log.WriteLine("[CCI] Remove {0}", removeResp.status ? "some" : "none");
+                            break;
+                        case "LRMRC.LinkStateUpdate":
+                            LinkStateUpdate linkStateUpdate = (LinkStateUpdate)msg;
+                            Log.WriteLine("[RC] {0} --{2}-> {1}", linkStateUpdate.beginNode.id, linkStateUpdate.endNode.id, linkStateUpdate.capacity);
+                            break;
+#endif
                         default:
                             break;
                     }

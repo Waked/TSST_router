@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using TSSTRouter;
 using LRMIntercom;
 using System.Threading;
+using LRMRCCommunications;
 
 namespace TSSTRouter
 {
@@ -18,6 +19,8 @@ namespace TSSTRouter
         string routerId;
         string asId;
         string snId;
+        ushort ccPort;
+        ushort rcPort;
         private List<Assignment> assignments;
         Dictionary<byte, uint> interfaceDefinitions;
         Dictionary<byte, PeerInformation> peers;
@@ -32,7 +35,7 @@ namespace TSSTRouter
 
         // Threads
         Timer sendPeerUpdateRequests = null;
-
+        Timer sendRCUpdate = null;
 
         // Constructor
         public LinkResourceManager(string routerId, string asId, string snId, ushort ccPort, ushort rcPort, Dictionary<byte, uint> interfaceDefinitions)
@@ -40,31 +43,35 @@ namespace TSSTRouter
             this.routerId = routerId;
             this.asId = asId;
             this.snId = snId;
+            this.ccPort = ccPort;
+            this.rcPort = rcPort;
             this.interfaceDefinitions = interfaceDefinitions;
 
             // Initialization
             BWMgmt = new BandwidthManagement(interfaceDefinitions);
             assignments = new List<Assignment>();
-            sendPeerUpdateRequests = new Timer(SendUpdateRequestsCallback, null, 1000, 3000); // Begin after 1 sec, repeat every 3 sec
             peers = new Dictionary<byte, PeerInformation>();
             // Begin with null peers on each interface
             foreach (KeyValuePair<byte, uint> kvpair in interfaceDefinitions)
             {
                 peers[kvpair.Key] = null;
             }
+            // Initialize threads
+            sendPeerUpdateRequests = new Timer(SendUpdateRequestsCallback, null, 1000, 3000); // Begin after 1 sec, repeat every 3 sec
+            sendRCUpdate = new Timer(SendRCUpdateCallback, null, Router.rng.Next(1, 11) * 100, 5000); // Begin roughly random, repeat every 5 sec
         }
 
 
         /*
          * Returns a label if assignment was successful, or zero if it was not.
          */
-        public uint AssignBandwidthOnInterface(byte interfaceId, uint bandwidth)
+        public uint AssignBandwidthOnInterface(byte interfaceId, uint bandwidth, int connectionId)
         {
             if (BWMgmt.AvailableBandwidthAt(interfaceId, bandwidth)) // If given bandwidth available at given iface
             {
                 BWMgmt.AssignBandwidth(interfaceId, bandwidth);
                 uint newLabel = NextFreeLabelOnInterface(interfaceId);
-                Assignment newAssignment = new Assignment(interfaceId, bandwidth, newLabel);
+                Assignment newAssignment = new Assignment(interfaceId, bandwidth, newLabel, connectionId);
                 assignments.Add(newAssignment);
                 return newLabel;
             }
@@ -74,12 +81,22 @@ namespace TSSTRouter
             }
         }
 
+        public void ReleaseAsignedBandwidth(int connectionId)
+        {
+            Assignment[] assgns = assignments.Where(assgn => assgn.connectionId == connectionId).ToArray();
+            foreach (Assignment assgn in assgns)
+            {
+                BWMgmt.ReleaseBandwidth(assgn.ifaceId, assgn.assignedBandwidth);
+                assignments.Remove(assgn);
+            }
+        }
+
         public void PrintAssignments()
         {
             Log.WriteLine("[LRM] Assigned resources:");
             foreach (var assignment in assignments)
             {
-                Log.WriteLine(true, "");
+                Log.WriteLine(true, ""); // WTF
             }
         }
 
@@ -107,12 +124,46 @@ namespace TSSTRouter
                 {
                     StatusUpdateRequest request = new StatusUpdateRequest(routerId, asId, snId, kvpair.Key);
                     sendPeerMessage(kvpair.Key, request);
+                    Thread.Sleep(20); // Desync in order to prevent packet merging
                 }
                 //Log.WriteLine("[LRM] Sent peer update requests");
             }
             catch (NullReferenceException)
             {
                 Log.WriteLine("[LRM] Message callback unassigned");
+            }
+        }
+
+        // This method sends the status of all it's links (SNPPs) as a message to
+        // a UDP port specified during construction as "rcPort".
+        public void SendRCUpdateCallback(object state)
+        {
+            foreach (KeyValuePair<byte, uint> ifaceDef in interfaceDefinitions)
+            {
+                Thread.Sleep(10 + Router.rng.Next(1, 10)); // Avoid message collision
+                SendRCUpdateSingle(ifaceDef.Key); // Execute a more general method for given SNPP
+            }
+        }
+        
+        // This method only updates the RC on the state of a given SNPP of this router.
+        public void SendRCUpdateSingle(byte beginSNPP)
+        {
+            PeerInformation peer = peers[beginSNPP];
+            if (peer != null) // There may not be a connection to a router on given SNPP
+            {
+                int capacity = (int)BWMgmt.AvailableBandwidthAt(beginSNPP);
+                LinkStateUpdate message = new LinkStateUpdate(
+                    routerId,
+                    asId,
+                    snId,
+                    beginSNPP,
+                    peer.remoteRouterId,
+                    peer.remoteAsId,
+                    peer.remoteSnId,
+                    peer.remoteSNPP,
+                    capacity
+                    );
+                sendMgmtMessage(rcPort, message);
             }
         }
 
@@ -151,7 +202,7 @@ namespace TSSTRouter
                             response.availableBw,
                             HandleLinkFailureCallback
                             );
-                        Log.WriteLine("[LRM] Creating new Peer object");
+                        //Log.WriteLine("[LRM] Creating new Peer object");
                     }
                     else
                     {
@@ -170,7 +221,7 @@ namespace TSSTRouter
                         }
                         else
                         {
-                            Log.WriteLine("[LRM] Update on peer {0}", peer.remoteRouterId);
+                            // Log.WriteLine("[LRM] Update on peer {0}", peer.remoteRouterId);
                         }
                     }
                     break;
@@ -225,12 +276,14 @@ namespace TSSTRouter
             public byte ifaceId;
             public uint assignedBandwidth;
             public uint label;
+            public int connectionId;
 
-            public Assignment(byte ifaceId, uint bandwidth, uint label)
+            public Assignment(byte ifaceId, uint bandwidth, uint label, int connectionId)
             {
                 this.ifaceId = ifaceId;
                 assignedBandwidth = bandwidth;
                 this.label = label;
+                this.connectionId = connectionId;
             }
         }
     }

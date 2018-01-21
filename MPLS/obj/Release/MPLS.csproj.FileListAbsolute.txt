@@ -1,0 +1,5 @@
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\bin\Release\MPLS.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\bin\Release\MPLS.pdb
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\obj\Release\MPLS.csproj.CoreCompileInputs.cache
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\obj\Release\MPLS.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\obj\Release\MPLS.pdb

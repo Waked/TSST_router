@@ -50,7 +50,7 @@ namespace TSSTRouter
             }
 
             // Deallocates given bandwidth from given SNPP (interface).
-            public void FreeBandwidth(byte interfaceId, uint bandwidth)
+            public void ReleaseBandwidth(byte interfaceId, uint bandwidth)
             {
                 database[interfaceId].assignedBw -= interfaceId;
             }

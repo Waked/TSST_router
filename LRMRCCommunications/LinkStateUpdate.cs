@@ -26,6 +26,7 @@ namespace LRMRCCommunications
             byte endSNPP,
             int capacity)
         {
+            messageType = "LRMRC.LinkStateUpdate";
             beginNode = new Node(beginId, beginAS, beginSubnet);
             endNode = new Node(endId, endAS, endSubnet);
             this.beginSNPP = beginSNPP;

@@ -83,8 +83,8 @@ namespace TSSTRouter
                     57702,
                     57702,
                     58001,
-                    58000,
-                    57000,
+                    58001,
+                    58001,
                     1000,
                     "defaultRouting.rt",
                     new Dictionary<byte, uint> { [1] = 100, [2] = 100, [3] = 200 });

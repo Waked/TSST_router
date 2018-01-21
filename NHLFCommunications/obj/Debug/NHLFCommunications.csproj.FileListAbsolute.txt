@@ -1,0 +1,11 @@
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\obj\Debug\NHLFCommunications.csprojResolveAssemblyReference.cache
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\obj\Debug\NHLFCommunications.csproj.CoreCompileInputs.cache
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\bin\Debug\NHLFCommunications.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\bin\Debug\NHLFCommunications.pdb
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\bin\Debug\Colorful.Console.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\bin\Debug\Communications.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\bin\Debug\NHLF.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\bin\Debug\NHLF.pdb
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\bin\Debug\Communications.pdb
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\obj\Debug\NHLFCommunications.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLFCommunications\obj\Debug\NHLFCommunications.pdb

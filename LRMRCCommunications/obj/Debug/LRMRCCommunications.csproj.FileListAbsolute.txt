@@ -1,0 +1,8 @@
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMRCCommunications\bin\Debug\LRMRCCommunications.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMRCCommunications\bin\Debug\LRMRCCommunications.pdb
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMRCCommunications\bin\Debug\Communications.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMRCCommunications\bin\Debug\Communications.pdb
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMRCCommunications\obj\Debug\LRMRCCommunications.csprojResolveAssemblyReference.cache
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMRCCommunications\obj\Debug\LRMRCCommunications.csproj.CoreCompileInputs.cache
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMRCCommunications\obj\Debug\LRMRCCommunications.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMRCCommunications\obj\Debug\LRMRCCommunications.pdb

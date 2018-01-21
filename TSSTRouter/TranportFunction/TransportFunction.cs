@@ -183,7 +183,7 @@ namespace TSSTRouter
 
         // Adds, swaps or removes (depending on situation) an entry in the
         // routing table. Returns a textual representation of the operation
-        // undertaken - "Added", "Swapped" or "Removed"
+        // undertaken - "Added", "Swapped" or "Removed".
         public string UpdateRoutingTable(NHLFEntry newEntry, bool addOrSwap)
         {
             NHLFEntry existingEntry = null;
@@ -219,6 +219,17 @@ namespace TSSTRouter
 
             return actionTaken;
         }
+
+        // Removes all entries in the routing table that are correlated to
+        // a given connection (ID). Returns "true" if some entries have been
+        // deleted, or "false" if none have been deleted.
+        public bool RemoveFromRoutingTable(int connectionId)
+        {
+            int initialTableLen = routingTable.Count; // Count current entry count.
+            // Filter out entries not related to connectionId and assign as current table.
+            routingTable = routingTable.Where(entry => entry.connectionID != connectionId).ToList();
+            return routingTable.Count < initialTableLen; // See: method description.
+        } 
 
         /* 
          * ParseRoutingTable(string)

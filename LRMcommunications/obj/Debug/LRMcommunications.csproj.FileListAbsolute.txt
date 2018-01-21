@@ -1,0 +1,8 @@
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMcommunications\bin\Debug\LRMcommunications.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMcommunications\bin\Debug\LRMcommunications.pdb
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMcommunications\bin\Debug\Communications.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMcommunications\bin\Debug\Communications.pdb
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMcommunications\obj\Debug\LRMcommunications.csprojResolveAssemblyReference.cache
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMcommunications\obj\Debug\LRMcommunications.csproj.CoreCompileInputs.cache
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMcommunications\obj\Debug\LRMcommunications.dll
+C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\LRMcommunications\obj\Debug\LRMcommunications.pdb
