@@ -156,6 +156,15 @@ namespace TSSTRouter
                     case ConsoleKey.T:
                         transportFunction.PrintRouteTable();
                         break;
+                    case ConsoleKey.A:
+                        LRM.PrintAssignments();
+                        break;
+                    case ConsoleKey.P:
+                        if (Log.IsPaused)
+                            Log.Unpause();
+                        else
+                            Log.Pause();
+                        break;
 #if DEBUG
                     case ConsoleKey.Enter:
                         MPLSPacket testPacket = new MPLSPacket(new int[] { 2137 }, "This is a test MPLSMessage.");

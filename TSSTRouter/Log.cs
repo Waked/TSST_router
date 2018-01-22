@@ -17,6 +17,12 @@ namespace TSSTRouter
         // This will be used for logging purposes
         private static Stopwatch timer;
 
+        // Buffer to store lines during pause
+        private static List<string> logBuffer;
+
+        // Pause flag
+        private static bool isPaused = false;
+
         // Static constructor - initializes certain static objects
         // and values.
         static Log()
@@ -29,6 +35,9 @@ namespace TSSTRouter
             style.AddStyle("MGMT", Color.Orange);
             style.AddStyle("ERROR", Color.Red);
             style.AddStyle("DROP", Color.OrangeRed);
+            style.AddStyle("LRM", Color.DeepPink);
+
+            logBuffer = new List<string>();
 
             timer = new Stopwatch();
             timer.Start();
@@ -41,26 +50,39 @@ namespace TSSTRouter
             }
         }
 
+        public static bool IsPaused { get => isPaused; private set => isPaused = value; }
+
         // Wraps Console.WriteLine method with style from Colorful.Console and a timestamp
         // from local Stopwatch.
         public static void WriteLine(string format, params object[] values)
         {
-            Colorful.Console.WriteLineStyled(style, Timestamp + format, values);
+            WriteLine(false, format, values);
         }
 
         public static void WriteLine(bool suppressTimestamp, string format, params object[] values)
         {
+            string str;
+
             if (suppressTimestamp)
-                Colorful.Console.WriteLineStyled(style, format, values);
+                str = String.Format(format, values);
             else
-                WriteLine(format, values);
+                str = String.Format(Timestamp + format, values);
+
+            if (IsPaused)
+                logBuffer.Add(str + '\n');
+            else
+                Colorful.Console.WriteLineStyled(style, str);
         }
 
         // Wraps Console.Write method with style from Colorful.Console and a timestamp
         // from local Stopwatch.
         public static void Write(string format, params object[] values)
         {
-            Colorful.Console.WriteStyled(style, Timestamp + format, values);
+            string str = String.Format(Timestamp + format, values);
+            if (IsPaused)
+                logBuffer.Add(str);
+            else
+                Colorful.Console.WriteStyled(style, str);
         }
 
         public static void PrintAsciiTitle(string value)
@@ -73,5 +95,18 @@ namespace TSSTRouter
             timer.Restart();
         }
 
+        public static void Pause()
+        {
+            IsPaused = true;
+        }
+
+        public static void Unpause()
+        {
+            IsPaused = false;
+            foreach (string str in logBuffer)
+            {
+                Colorful.Console.WriteStyled(style, str);
+            }
+        }
     }
 }

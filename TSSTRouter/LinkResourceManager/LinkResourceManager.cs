@@ -106,10 +106,19 @@ namespace TSSTRouter
         public void PrintAssignments()
         {
             Log.WriteLine("[LRM] Assigned resources:");
+            Log.WriteLine(true, "\t┌────────┬─────────┬─────────┬───────┐");
+            Log.WriteLine(true, "\t│ConnID  │Label    │Bandwidth│IfaceID│");
+            Log.WriteLine(true, "\t├────────┼─────────┼─────────┼───────┤");
             foreach (var assignment in assignments)
             {
-                Log.WriteLine(true, ""); // WTF
+                Log.WriteLine(true, "\t├{0}┼{1}┼{2}┼{3}┤",
+                    assignment.connectionId.ToString().PadRight(8),
+                    assignment.label.ToString().PadRight(9),
+                    assignment.assignedBandwidth.ToString().PadRight(9),
+                    assignment.ifaceId.ToString().PadRight(7)
+                    );
             }
+            Log.WriteLine(true, "\t└────────┴─────────┴─────────┴───────┘");
         }
 
         public uint NextFreeLabelOnInterface(byte interfaceId)
@@ -118,10 +127,8 @@ namespace TSSTRouter
             // increment from 1 until there is a free
             // label found.
             uint label = 1;
-            var query = from assignment in assignments
-                        where assignment.label == label && assignment.ifaceId == interfaceId
-                        select assignment;
-            while (query.Count() > 1)
+            uint[] assignedLabels = assignments.Select(asgn => asgn.label).ToArray();
+            while (assignedLabels.Contains(label))
                 label++;
             return label;
         }
@@ -156,14 +163,31 @@ namespace TSSTRouter
         // a UDP port specified during construction as "rcPort".
         public void SendRCUpdateCallback(object state)
         {
+            BatchUpdate batchUpdate = new BatchUpdate();
+            int linkCounter = 0;
             foreach (KeyValuePair<byte, uint> ifaceDef in interfaceDefinitions)
             {
                 if (peers[ifaceDef.Key] != null && peers[ifaceDef.Key].isActive)
                 {
-                    Thread.Sleep(10 + Router.rng.Next(1, 10)); // Avoid message collision
-                    SendRCUpdateSingle(ifaceDef.Key); // Execute a more general method for given SNPP
+                    PeerInformation peer = peers[ifaceDef.Key];
+                    int capacity = (int)BWMgmt.AvailableBandwidthAt(ifaceDef.Key);
+                    //SendRCUpdateSingle(ifaceDef.Key); // Execute a more general method for given SNPP
+                    batchUpdate.linkList.Add(new Link(
+                        routerId,
+                        asId,
+                        snId,
+                        ifaceDef.Key,
+                        peer.remoteRouterId,
+                        peer.remoteAsId,
+                        peer.remoteSnId,
+                        peer.remoteSNPP,
+                        capacity
+                        ));
+                    linkCounter++;
                 }
             }
+            sendMgmtMessage(rcPort, batchUpdate);
+            Log.WriteLine("[LRM] Sent RC update ({0} links)", linkCounter);
         }
         
         // This method only updates the RC on the state of a given SNPP of this router.
