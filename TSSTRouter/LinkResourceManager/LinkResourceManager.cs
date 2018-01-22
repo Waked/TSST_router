@@ -68,7 +68,7 @@ namespace TSSTRouter
                 peers[kvpair.Key] = null;
             }
             // Initialize threads
-            sendPeerUpdateRequests = new Timer(SendUpdateRequestsCallback, null, 1000, 3000); // Begin after 1 sec, repeat every 3 sec
+            sendPeerUpdateRequests = new Timer(SendUpdateRequestsCallback, null, 1000, 500); // Begin after 1 sec, repeat every 3 sec
             sendRCUpdate = new Timer(SendRCUpdateCallback, null, Router.rng.Next(1, 11) * 100, 500); // Begin roughly random, repeat every 0.5 sec
             sendCCKeepAlive = new Timer(SendCCKeepAliveCallback, null, 0, 1000);
         }
@@ -83,6 +83,8 @@ namespace TSSTRouter
             {
                 BWMgmt.AssignBandwidth(interfaceId, bandwidth);
                 uint newLabel = NextFreeLabelOnInterface(interfaceId);
+                Log.WriteLine("[LRM] Negotiating free label on iface {0}...", interfaceId);
+                Log.WriteLine("[LRM] Free label: {0}", newLabel);
                 Assignment newAssignment = new Assignment(interfaceId, bandwidth, newLabel, connectionId);
                 assignments.Add(newAssignment);
                 return newLabel;
@@ -151,12 +153,12 @@ namespace TSSTRouter
                     sendPeerMessage(kvpair.Key, request);
                     Thread.Sleep(50); // Desync in order to prevent packet merging
                 }
-                //Log.WriteLine("[LRM] Sent peer update requests");
             }
             catch (NullReferenceException)
             {
                 Log.WriteLine("[LRM] Message callback unassigned");
             }
+            Log.WriteLine("[LRM] Network discovery");
         }
 
         // This method sends the status of all it's links (SNPPs) as a message to
@@ -311,7 +313,7 @@ namespace TSSTRouter
                 remoteAssignedBw = assignedBw;
                 remoteAvailableBw = availableBw;
                 isActive = true;
-                timeoutTimer = new Timer(failureCallback, this, 5000, 0);
+                timeoutTimer = new Timer(failureCallback, this, 900, 0);
             }
         }
 

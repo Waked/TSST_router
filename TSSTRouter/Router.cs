@@ -145,10 +145,19 @@ namespace TSSTRouter
             {
                 Log.WriteLine("[ERROR] Failed to load routing table from file (file not found)");
             }
-            
+
             // Launch
             //StartPollingNMS(58000);
 
+            // This method incorporates an infinite loop, so this
+            // thread shall never exit.
+            KeyboardControl();
+        }
+
+        // Keyboard input handling -each keypress can be interpreted as
+        // a control command.
+        void KeyboardControl()
+        {
             while (true)
             {
                 switch (Console.ReadKey(true).Key)
@@ -171,7 +180,7 @@ namespace TSSTRouter
                         transportFunction.EnqueuePacketOnFirstQueue(testPacket);
                         break;
                     case ConsoleKey.U:
-                        NHLFEntry entry = new NHLFEntry(10, 1, 17, true, 2, new int[] { 35 } );
+                        NHLFEntry entry = new NHLFEntry(10, 1, 17, true, 2, new int[] { 35 });
                         AddUpdateRequest testUpdateReq = new AddUpdateRequest("Helo it me", mgmtLocalPort, 2137, entry);
                         SendManagementMsg(mgmtLocalPort, testUpdateReq);
                         break;
@@ -212,12 +221,11 @@ namespace TSSTRouter
                     byte[] bytes = listener.Receive(ref groupEP);
 
                     Communications.Message msg = Communications.Serialization.Deserialize(bytes);
-
-                    Log.WriteLine("[MGMT] {1}, port {2}: {0})", msg.messageType, msg.senderID, msg.senderPort);
-                    
+                                        
                     switch (msg.messageType)
                     {
                         case "NHLF.AddUpdateRequest":
+                            Log.WriteLine("[MGMT CCI] {1}, port {2}: {0})", msg.messageType, msg.senderID, msg.senderPort);
                             AddUpdateRequest addUpdateReq = (AddUpdateRequest)msg;
                             transportFunction.UpdateRoutingTable(addUpdateReq.entry, true);
                             // !!! IT CAN GO TERRIBLY WRONG HERE !!!
@@ -225,16 +233,20 @@ namespace TSSTRouter
                                 (ushort)addUpdateReq.senderPort,
                                 new AddUpdateResponse(id, mgmtLocalPort, addUpdateReq.seq, true)
                                 );
+                            Log.WriteLine("[MGMT CCI] Add/update forward: conn {2}, iface {0}, label {1}", addUpdateReq.entry.interface_in, addUpdateReq.entry.label_in, addUpdateReq.entry.connectionID);
                             break;
                         case "NHLF.RemoveRequest":
+                            Log.WriteLine("[MGMT CCI] {1}, port {2}: {0})", msg.messageType, msg.senderID, msg.senderPort);
                             RemoveRequest removeReq = (RemoveRequest)msg;
                             bool status = transportFunction.RemoveFromRoutingTable(removeReq.connectionID);
                             SendManagementMsg(
                                 (ushort)removeReq.senderPort,
                                 new RemoveResponse(id, mgmtLocalPort, removeReq.seq, status)
                                 );
+                            Log.WriteLine("[MGMT CCI] {0} entries for connection {1}", status ? "Removed" : "Could not remove", removeReq.connectionID);
                             break;
                         case "AllocateRequest":
+                            Log.WriteLine("[MGMT LRM] {1}, port {2}: {0})", msg.messageType, msg.senderID, msg.senderPort);
                             AllocateRequest allocateReq = (AllocateRequest)msg;
                             uint label = LRM.AssignBandwidthOnInterface(allocateReq.interfaceID, (uint)allocateReq.bitrate, allocateReq.connectionID);
                             SendManagementMsg(
@@ -246,8 +258,13 @@ namespace TSSTRouter
                                     allocateReq.seq
                                     )
                                 );
+                            if (label != 0)
+                                Log.WriteLine("[MGMT LRM] Allocate {0} Mb/s on iface {1} for connection {2})", allocateReq.bitrate, allocateReq.interfaceID, allocateReq.connectionID);
+                            else
+                                Log.WriteLine("[MGMT LRM] Could not allocate {0} Mb/s on iface {1} for connection {2})", allocateReq.bitrate, allocateReq.interfaceID, allocateReq.connectionID);
                             break;
                         case "DeallocateRequest":
+                            Log.WriteLine("[MGMT LRM] {1}, port {2}: {0})", msg.messageType, msg.senderID, msg.senderPort);
                             DeallocateRequest deallocateReq = (DeallocateRequest)msg;
                             LRM.ReleaseAsignedBandwidth(deallocateReq.connectionID);
                             SendManagementMsg(
@@ -258,8 +275,8 @@ namespace TSSTRouter
                                     deallocateReq.seq
                                     )
                                 );
+                            Log.WriteLine("[MGMT LRM] Deallocate resources for connection {0})", deallocateReq.connectionID);
                             break;
-
 #if DEBUG
                         case "NHLF.AddUpdateResponse":
                             AddUpdateResponse addUpdateResponse = (AddUpdateResponse)msg;

@@ -98,10 +98,12 @@ namespace TSSTRouter
         public static void Pause()
         {
             IsPaused = true;
+            Colorful.Console.WriteLineStyled(style, "#### PAUSED ####");
         }
 
         public static void Unpause()
         {
+            Colorful.Console.WriteLineStyled(style, "#### UNPAUSED ####");
             IsPaused = false;
             foreach (string str in logBuffer)
             {
