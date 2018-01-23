@@ -92,7 +92,7 @@ namespace TSSTRouter
             Log.WriteLine(true, "Ports: Wirecloud({0}, {1}), NMS({2}, {3})",
                 wirecloudLocalPort, wirecloudRemotePort,
                 mgmtLocalPort, connectionControllerPort);
-            Log.WriteLine(true, "Interfaces: " + string.Join(", ", routerInterfaceDefs.ToString()));
+            Log.WriteLine(true, "Interfaces: " + string.Join(", ", routerInterfaceDefs.Select(def => def.Key + ": " + def.Value + "Mb/s").ToArray()));
             Log.WriteLine(true, "======");
             
             try

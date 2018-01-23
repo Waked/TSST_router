@@ -68,9 +68,9 @@ namespace TSSTRouter
                 peers[kvpair.Key] = null;
             }
             // Initialize threads
-            sendPeerUpdateRequests = new Timer(SendUpdateRequestsCallback, null, 1000, 500); // Begin after 1 sec, repeat every 3 sec
-            sendRCUpdate = new Timer(SendRCUpdateCallback, null, Router.rng.Next(1, 11) * 100, 500); // Begin roughly random, repeat every 0.5 sec
-            sendCCKeepAlive = new Timer(SendCCKeepAliveCallback, null, 0, 1000);
+            sendPeerUpdateRequests = new Timer(SendUpdateRequestsCallback, null, Router.rng.Next(5, 11) * 100, 500); // Begin after 1 sec, repeat every 3 sec
+            sendRCUpdate = new Timer(SendRCUpdateCallback, null, Router.rng.Next(5, 11) * 100, 500); // Begin roughly random, repeat every 0.5 sec
+            sendCCKeepAlive = new Timer(SendCCKeepAliveCallback, null, Router.rng.Next(5, 11) * 100, 1000);
             Log.WriteLine("[LRM] Begin to send RC updates every 500 ms");
         }
 

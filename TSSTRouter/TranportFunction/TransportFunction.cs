@@ -49,7 +49,7 @@ namespace TSSTRouter
             routerInterfaces = ifaces.ToArray();
 
             // Start periodically sending all packets enqueued in the interfaces
-            packageSendTimer = new Timer(SendPacketsCallback, null, 0, operationInterval);
+            packageSendTimer = new Timer(SendPacketsCallback, null, 1000, operationInterval);
 
             Initialize();
         }
