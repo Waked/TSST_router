@@ -71,6 +71,7 @@ namespace TSSTRouter
             sendPeerUpdateRequests = new Timer(SendUpdateRequestsCallback, null, 1000, 500); // Begin after 1 sec, repeat every 3 sec
             sendRCUpdate = new Timer(SendRCUpdateCallback, null, Router.rng.Next(1, 11) * 100, 500); // Begin roughly random, repeat every 0.5 sec
             sendCCKeepAlive = new Timer(SendCCKeepAliveCallback, null, 0, 1000);
+            Log.WriteLine("[LRM] Begin to send RC updates every 500 ms");
         }
 
 
@@ -158,7 +159,7 @@ namespace TSSTRouter
             {
                 Log.WriteLine("[LRM] Message callback unassigned");
             }
-            Log.WriteLine("[LRM] Network discovery");
+            //Log.WriteLine("[LRM] Network discovery");
         }
 
         // This method sends the status of all it's links (SNPPs) as a message to
@@ -166,6 +167,8 @@ namespace TSSTRouter
         public void SendRCUpdateCallback(object state)
         {
             BatchUpdate batchUpdate = new BatchUpdate();
+            batchUpdate.senderID = routerId;
+            batchUpdate.senderPort = localMgmtPort;
             int linkCounter = 0;
             foreach (KeyValuePair<byte, uint> ifaceDef in interfaceDefinitions)
             {
@@ -189,7 +192,7 @@ namespace TSSTRouter
                 }
             }
             sendMgmtMessage(rcPort, batchUpdate);
-            Log.WriteLine("[LRM] Sent RC update ({0} links)", linkCounter);
+            //Log.WriteLine("[LRM] Sent RC update ({0} links)", linkCounter);
         }
         
         // This method only updates the RC on the state of a given SNPP of this router.
@@ -249,7 +252,7 @@ namespace TSSTRouter
                             response.availableBw,
                             HandleLinkFailureCallback
                             );
-                        //Log.WriteLine("[LRM] Creating new Peer object");
+                        Log.WriteLine("[LRM] Network discovery: {0}:{1} on iface {2}", response.id, response.snppId, localsnpp);
                     }
                     else
                     {
@@ -263,7 +266,7 @@ namespace TSSTRouter
                         peer.timeoutTimer.Change(5000, 0);
                         if (!peer.isActive)
                         {
-                            Log.WriteLine("[LRM] Peer {0} is back", peer.remoteRouterId);
+                            Log.WriteLine("[LRM] Network discovery: {0}:{1} on iface {2}", response.id, response.snppId, localsnpp);
                             peer.isActive = true;
                         }
                         else
@@ -282,7 +285,7 @@ namespace TSSTRouter
         {
             PeerInformation peer = (PeerInformation)state;
             peer.isActive = false;
-            Log.WriteLine("[LRM] Lost peer {0}", peer.remoteRouterId);
+            Log.WriteLine("[LRM] Network discovery: {0} disconnected", peer.remoteRouterId);
         }
 
         class PeerInformation
