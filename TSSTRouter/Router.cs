@@ -28,6 +28,11 @@ namespace TSSTRouter
         // Static RNG used in other router components
         public static Random rng = new Random();
 
+#if DEBUG
+        public static int allocCounter = 2137;
+        private Timer debugTimer;
+#endif
+
         // Config information
         public string id;
         public string autonomicSystemId;
@@ -125,6 +130,14 @@ namespace TSSTRouter
                 // Launch rotuer management thread
                 managementThread = new Thread(ReceiveManagementMsg);
                 managementThread.Start();
+
+#if DEBUG
+                 // Launch debug thread
+                //debugTimer = new Timer((object state) =>
+                // {
+                //     Log.WriteLine("[DEBUG] Free resources on iface {0}: {1}", 1, 0);
+                // }, null, 5000, 1000);
+#endif
             }
             catch (ThreadStartException tse)
             {
@@ -187,6 +200,14 @@ namespace TSSTRouter
                     case ConsoleKey.R:
                         RemoveRequest testRemoveReq = new RemoveRequest("Helo it me", mgmtLocalPort, 2137, 10);
                         SendManagementMsg(mgmtLocalPort, testRemoveReq);
+                        break;
+                    case ConsoleKey.L:
+                        AllocateRequest testAllocReq = new AllocateRequest(id, mgmtLocalPort, allocCounter++, 1, 30, 1);
+                        SendManagementMsg(mgmtLocalPort, testAllocReq);
+                        break;
+                    case ConsoleKey.D:
+                        DeallocateRequest testDeallocReq = new DeallocateRequest(id, mgmtLocalPort, allocCounter--, 1);
+                        SendManagementMsg(mgmtLocalPort, testDeallocReq);
                         break;
 #endif
                     default:

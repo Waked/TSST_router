@@ -101,6 +101,7 @@ namespace TSSTRouter
             Assignment[] assgns = assignments.Where(assgn => assgn.connectionId == connectionId).ToArray();
             foreach (Assignment assgn in assgns)
             {
+                //Log.WriteLine("Releasing {0} Mb/s on iface {1}", assgn.assignedBandwidth, assgn.ifaceId);
                 BWMgmt.ReleaseBandwidth(assgn.ifaceId, assgn.assignedBandwidth);
                 assignments.Remove(assgn);
             }
@@ -114,7 +115,7 @@ namespace TSSTRouter
             Log.WriteLine(true, "\t├────────┼─────────┼─────────┼───────┤");
             foreach (var assignment in assignments)
             {
-                Log.WriteLine(true, "\t├{0}┼{1}┼{2}┼{3}┤",
+                Log.WriteLine(true, "\t│{0}│{1}│{2}│{3}│",
                     assignment.connectionId.ToString().PadRight(8),
                     assignment.label.ToString().PadRight(9),
                     assignment.assignedBandwidth.ToString().PadRight(9),
@@ -122,6 +123,11 @@ namespace TSSTRouter
                     );
             }
             Log.WriteLine(true, "\t└────────┴─────────┴─────────┴───────┘");
+            Log.WriteLine(true, "\tFree resources:");
+            foreach (KeyValuePair<byte, uint> def in interfaceDefinitions)
+            {
+                Log.WriteLine(true, "\tIface {0}: {1}", def.Key, BWMgmt.AvailableBandwidthAt(def.Key));
+            }
         }
 
         public uint NextFreeLabelOnInterface(byte interfaceId)
