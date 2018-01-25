@@ -3,4 +3,3 @@ C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLF\bin\Release\NHLF.pd
 C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLF\obj\Release\NHLF.csproj.CoreCompileInputs.cache
 C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLF\obj\Release\NHLF.dll
 C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLF\obj\Release\NHLF.pdb
-C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\NHLF\obj\Release\NHLF.csprojResolveAssemblyReference.cache

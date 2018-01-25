@@ -1,6 +1,5 @@
 C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\bin\Debug\MPLS.dll
 C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\bin\Debug\MPLS.pdb
-C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\obj\Debug\MPLS.csprojResolveAssemblyReference.cache
 C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\obj\Debug\MPLS.csproj.CoreCompileInputs.cache
 C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\obj\Debug\MPLS.dll
 C:\Users\Tomasz Dzierżanowski\Source\Repos\TSST_router\MPLS\obj\Debug\MPLS.pdb
